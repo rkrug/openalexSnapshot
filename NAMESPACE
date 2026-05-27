@@ -3,3 +3,4 @@
 export(build_corpus_index)
 export(lookup_by_id)
 export(snapshot_to_parquet)
+useDynLib(openalexSnapshot, .registration = TRUE)

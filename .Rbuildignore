@@ -3,4 +3,5 @@
 ^\.github$
 ^CLAUDE\.md$
 ^TODO\.md$
-^tools$
+^src/rust/target$
+^src/\.cargo$
