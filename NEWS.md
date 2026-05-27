@@ -5,5 +5,8 @@
   (`lookup_by_id()`) have been split out of **openalexPro** into this dedicated
   package. Function signatures are preserved from the original openalexPro
   versions.
-* Implementations are stubs pending the Rust back-end (openalex-core via
-  extendr) and/or pure-R/DuckDB fallbacks being wired up.
+* **Rust-only design**: no pure-R fallback is planned. Installation friction is
+  addressed by pre-compiled r-universe binaries rather than a second
+  implementation. Only package developers need a Rust toolchain.
+* Current implementations are stubs pending the Rust back-end (openalex-core
+  via extendr) being wired up.

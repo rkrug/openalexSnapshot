@@ -18,28 +18,50 @@ an informative error pointing users here.
 
 ## Architecture
 
+### Design decision: Rust-only, no pure-R fallback
+
+`openalexSnapshot` is **Rust-only**. There is no pure-R/DuckDB fallback and none is planned.
+
+**Rationale:** Maintaining two implementations (Rust + R) in parallel doubles the maintenance
+burden and invites subtle divergence. The historical motivation for pure-R fallbacks was Rust
+toolchain installation friction at the user's machine — that problem is solved at the distribution
+layer instead:
+
+- **r-universe** (or GitHub Actions) pre-compiles binaries for macOS (arm64 + x86_64), Linux
+  (x86_64), and Windows before each release.
+- Users install with `pak::pak("rkrug/openalexSnapshot")` and receive a pre-built binary — no
+  Cargo required.
+- Only package developers and CI need Rust installed.
+
+The pure-R `_R` variants from openalexPro are available in git history if ever needed as
+reference:
+```
+git -C ~/GitHub/openalexPro show 70539a0:R/snapshot_to_parquet.R
+git -C ~/GitHub/openalexPro show 70539a0:R/build_corpus_index.R
+git -C ~/GitHub/openalexPro show 70539a0:R/lookup_by_id.R
+```
+
 ### Current state (stubs)
 
 All three functions currently raise "not yet implemented" errors. They have the correct argument
-signatures (preserved from openalexPro). The actual implementations need to be wired up:
-
-- **Rust back-end**: `openalex-core` (at `~/GitHub/openalex-snapshot`) provides a Rust library
-  that can be exposed to R via [extendr](https://extendr.github.io/). This is the preferred path
-  for performance-critical bulk conversion.
-- **Pure-R/DuckDB fallback**: The `_R` variants from openalexPro can serve as a starting point.
-  They were removed from openalexPro as part of the split but are recoverable from git history
-  (`git show 70539a0:R/snapshot_to_parquet.R` etc. in the openalexPro repo).
+signatures (preserved from openalexPro). The Rust back-end still needs to be wired up via
+extendr.
 
 ### Rust back-end (openalex-core)
 
-`~/GitHub/openalex-snapshot/src/main.rs` contains the Rust implementation of the snapshot
-conversion pipeline. The key functions are:
-- `snapshot_to_parquet` — JSON.GZ → Parquet per dataset
+`~/GitHub/openalex-snapshot/src/main.rs` contains the Rust implementation. The key functions:
+- `snapshot_to_parquet` — JSON.GZ → Parquet per dataset (schema inference + rayon parallelism)
 - `build_corpus_index` — two-stage indexing (per-file shards → combined index)
 - `lookup_by_id` — ID routing via entity prefix (`W`=works, `A`=authors, etc.)
 
-To expose these via extendr, add a `src/rust/` directory with a library crate that wraps
-`openalex-core` and uses `#[extendr]` attributes.
+To expose these via extendr:
+1. Extract the relevant logic from `src/main.rs` into a Rust library crate under
+   `~/GitHub/openalex-snapshot/` (or a separate `openalex-core` crate).
+2. Add `src/rust/` to this R package with a thin extendr wrapper crate that depends on
+   `openalex-core` and annotates the public functions with `#[extendr]`.
+3. Add `src/Makevars.in` / `src/Makevars.win.in` and `configure` / `configure.win` via
+   `rextendr::use_extendr()`.
+4. Set up GitHub Actions to cross-compile and push to r-universe.
 
 ## Common Commands
 

@@ -80,7 +80,7 @@ snapshot_to_parquet <- function(
   stop(
     "snapshot_to_parquet() is not yet implemented in openalexSnapshot.\n",
     "The Rust back-end (openalex-core via extendr) has not been wired up yet.\n",
-    "A pure-R/DuckDB fallback is planned — contributions welcome.",
+    "Pre-compiled binaries will be provided via r-universe once available.",
     call. = FALSE
   )
 }
