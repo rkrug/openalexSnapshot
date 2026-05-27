@@ -1,0 +1,31 @@
+Package: openalexSnapshot
+Title: OpenAlex Bulk Snapshot Conversion, Indexing, and Record Extraction
+Version: 0.0.0.9000
+Author: Rainer M Krug
+Maintainer: Rainer M Krug <Rainer@krugs.de>
+Description: Provides tools for working with the OpenAlex bulk snapshot:
+    converting .json.gz files to Parquet format, building ID-lookup indexes
+    over the resulting corpus, and extracting records by OpenAlex ID.
+    Large-scale operations delegate to a compiled Rust back-end
+    (openalex-core via extendr); a pure-R/DuckDB fallback is included for
+    environments without a Rust toolchain.
+License: GPL (>= 2)
+URL: https://github.com/rkrug/openalexSnapshot
+BugReports: https://github.com/rkrug/openalexSnapshot/issues
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    DBI,
+    duckdb,
+    arrow,
+    dplyr,
+    future,
+    future.apply,
+    progressr
+Suggests:
+    testthat (>= 3.0.0),
+    pak
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2

@@ -1,0 +1,27 @@
+# R package standard ignores
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+*.Rproj
+
+# Package build artifacts
+src/*.o
+src/*.so
+src/*.dll
+*.tar.gz
+*.zip
+
+# Documentation build
+/doc/
+/Meta/
+
+# Compiled Rust artifacts (when extendr is added)
+src/rust/target/
+src/Makevars
+src/Makevars.win
+target/
+
+# Test output
+tests/testthat/Rplots.pdf
