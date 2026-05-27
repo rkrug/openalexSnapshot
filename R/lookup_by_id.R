@@ -42,6 +42,9 @@
 #' @seealso [build_corpus_index()] for building the required index,
 #'   [snapshot_to_parquet()] for creating the Parquet corpus.
 #'
+#' @importFrom arrow open_dataset
+#' @importFrom dplyr collect
+#'
 #' @examples
 #' \dontrun{
 #' # root_dir mode (searches multiple datasets)
@@ -80,10 +83,102 @@ lookup_by_id <- function(
   selected    = NULL,
   output      = NULL
 ) {
-  stop(
-    "lookup_by_id() is not yet implemented in openalexSnapshot.\n",
-    "The Rust back-end (openalex-core via extendr) has not been wired up yet.\n",
-    "Pre-compiled binaries will be provided via r-universe once available.",
-    call. = FALSE
-  )
+  if (missing(ids) || length(ids) == 0L) {
+    stop("'ids' must be provided and non-empty.", call. = FALSE)
+  }
+
+  workers_int <- as.integer(if (is.null(workers)) 1L else workers)
+
+  # index_file mode ------------------------------------------------------------
+  if (!is.null(index_file)) {
+    if (is.null(output)) {
+      # Write to a temp dir, read back as data frame, then clean up.
+      tmp_out <- tempfile(pattern = "oa_lookup_")
+      on.exit(unlink(tmp_out, recursive = TRUE, force = TRUE), add = TRUE)
+      oa_lookup_by_id(
+        index_file = index_file,
+        ids        = as.character(ids),
+        output     = tmp_out,
+        workers    = workers_int,
+        verbose    = isTRUE(verbose)
+      )
+      pq_files <- list.files(tmp_out, pattern = "\\.parquet$",
+                             full.names = TRUE, recursive = TRUE)
+      if (length(pq_files) == 0L) {
+        message("No matching records found.")
+        return(data.frame())
+      }
+      result <- arrow::open_dataset(tmp_out) |> dplyr::collect()
+      if ("file_row_number" %in% names(result)) {
+        result$file_row_number <- NULL
+      }
+      message("Retrieved ", nrow(result), " records")
+      return(result)
+    } else {
+      oa_lookup_by_id(
+        index_file = index_file,
+        ids        = as.character(ids),
+        output     = output,
+        workers    = workers_int,
+        verbose    = isTRUE(verbose)
+      )
+      return(invisible(output))
+    }
+  }
+
+  # root_dir mode --------------------------------------------------------------
+  if (is.null(root_dir)) {
+    stop(
+      "Provide either `root_dir` or `index_file`.",
+      call. = FALSE
+    )
+  }
+
+  parquet_root <- file.path(root_dir, "parquet")
+
+  if (is.null(data_sets)) {
+    idx_files <- list.files(
+      parquet_root,
+      pattern   = "_id_idx\\.parquet$",
+      full.names = FALSE,
+      recursive  = FALSE
+    )
+    data_sets <- sub("_id_idx\\.parquet$", "", idx_files)
+  }
+
+  if (length(data_sets) == 0L) {
+    stop(
+      "No index files found under ", parquet_root,
+      ". Run build_corpus_index() first.",
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(project_dir)) {
+    dir.create(project_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  for (ds in data_sets) {
+    idx_path <- file.path(parquet_root, paste0(ds, "_id_idx.parquet"))
+    if (!file.exists(idx_path)) {
+      if (isTRUE(verbose)) message("No index for dataset '", ds, "', skipping.")
+      next
+    }
+
+    ds_output <- if (!is.null(project_dir)) {
+      file.path(project_dir, paste0("snapshot_extract_", ds))
+    } else {
+      stop("project_dir must be provided in root_dir mode.", call. = FALSE)
+    }
+
+    oa_lookup_by_id(
+      index_file = idx_path,
+      ids        = as.character(ids),
+      output     = ds_output,
+      workers    = workers_int,
+      verbose    = isTRUE(verbose)
+    )
+  }
+
+  invisible(project_dir)
 }

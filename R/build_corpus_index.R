@@ -71,10 +71,45 @@ build_corpus_index <- function(
   verbose      = TRUE,
   corpus_dir   = NULL
 ) {
-  stop(
-    "build_corpus_index() is not yet implemented in openalexSnapshot.\n",
-    "The Rust back-end (openalex-core via extendr) has not been wired up yet.\n",
-    "Pre-compiled binaries will be provided via r-universe once available.",
-    call. = FALSE
-  )
+  workers_int      <- as.integer(if (is.null(workers)) 1L else workers)
+  memory_limit_str <- if (is.null(memory_limit)) "" else as.character(memory_limit)
+
+  # corpus_dir mode: index a single explicit directory -------------------------
+  if (!is.null(corpus_dir)) {
+    idx_path <- oa_build_corpus_index(
+      corpus_dir   = corpus_dir,
+      workers      = workers_int,
+      memory_limit = memory_limit_str,
+      overwrite    = isTRUE(overwrite),
+      verbose      = isTRUE(verbose)
+    )
+    return(invisible(idx_path))
+  }
+
+  # root_dir mode: iterate over datasets ---------------------------------------
+  if (is.null(root_dir)) {
+    stop(
+      "Provide either `root_dir` or `corpus_dir`.",
+      call. = FALSE
+    )
+  }
+
+  parquet_root <- file.path(root_dir, "parquet")
+
+  if (is.null(data_sets)) {
+    data_sets <- list.dirs(parquet_root, recursive = FALSE, full.names = FALSE)
+    data_sets <- data_sets[!grepl("^\\.", data_sets)]
+  }
+
+  for (ds in data_sets) {
+    oa_build_corpus_index(
+      corpus_dir   = file.path(parquet_root, ds),
+      workers      = workers_int,
+      memory_limit = memory_limit_str,
+      overwrite    = isTRUE(overwrite),
+      verbose      = isTRUE(verbose)
+    )
+  }
+
+  invisible(root_dir)
 }

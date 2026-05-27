@@ -2,5 +2,10 @@
 
 export(build_corpus_index)
 export(lookup_by_id)
+export(oa_build_corpus_index)
+export(oa_lookup_by_id)
+export(oa_snapshot_to_parquet)
 export(snapshot_to_parquet)
+importFrom(arrow,open_dataset)
+importFrom(dplyr,collect)
 useDynLib(openalexSnapshot, .registration = TRUE)

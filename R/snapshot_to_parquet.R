@@ -77,10 +77,16 @@ snapshot_to_parquet <- function(
     )
   }
 
-  stop(
-    "snapshot_to_parquet() is not yet implemented in openalexSnapshot.\n",
-    "The Rust back-end (openalex-core via extendr) has not been wired up yet.\n",
-    "Pre-compiled binaries will be provided via r-universe once available.",
-    call. = FALSE
+  oa_snapshot_to_parquet(
+    snapshot_dir = snapshot_dir,
+    parquet_dir  = parquet_dir,
+    data_sets    = if (is.null(data_sets)) character(0L) else as.character(data_sets),
+    workers      = as.integer(if (is.null(workers)) 1L else workers),
+    sample_size  = as.integer(if (is.null(sample_size) || sample_size == 0) 0L else sample_size),
+    memory_limit = if (is.null(memory_limit)) "" else as.character(memory_limit),
+    temp_dir     = if (is.null(temp_directory)) "" else as.character(temp_directory),
+    verbose      = isTRUE(verbose)
   )
+
+  invisible(NULL)
 }

@@ -1,4 +1,4 @@
-# openalexSnapshot (development)
+# openalexSnapshot 0.0.0.9000
 
 * Package created. Snapshot conversion (`snapshot_to_parquet()`), corpus
   indexing (`build_corpus_index()`), and ID-based record extraction
@@ -8,5 +8,5 @@
 * **Rust-only design**: no pure-R fallback is planned. Installation friction is
   addressed by pre-compiled r-universe binaries rather than a second
   implementation. Only package developers need a Rust toolchain.
-* Current implementations are stubs pending the Rust back-end (openalex-core
-  via extendr) being wired up.
+* Rust back-end (`openalex-core` via extendr) wired up; all three functions
+  delegate to compiled Rust code.
