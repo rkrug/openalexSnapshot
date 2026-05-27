@@ -8,7 +8,7 @@ test_that("build_corpus_index() errors when no path arguments given", {
 test_that("build_corpus_index() uses corpus_dir mode when corpus_dir is provided", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   build_corpus_index(corpus_dir = "/data/parquet/works")
@@ -20,7 +20,7 @@ test_that("build_corpus_index() uses corpus_dir mode when corpus_dir is provided
 test_that("build_corpus_index() corpus_dir mode returns invisible index path", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   result <- build_corpus_index(corpus_dir = "/data/parquet/works")
   # Result is invisible; accessing it gives the index path
@@ -30,7 +30,7 @@ test_that("build_corpus_index() corpus_dir mode returns invisible index path", {
 test_that("build_corpus_index() passes workers as integer", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   build_corpus_index(corpus_dir = "/data/works", workers = 4)
@@ -40,7 +40,7 @@ test_that("build_corpus_index() passes workers as integer", {
 test_that("build_corpus_index() defaults workers to 1L", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   build_corpus_index(corpus_dir = "/data/works")
@@ -50,7 +50,7 @@ test_that("build_corpus_index() defaults workers to 1L", {
 test_that("build_corpus_index() passes memory_limit as string", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   build_corpus_index(corpus_dir = "/data/works", memory_limit = "20GB")
@@ -63,7 +63,7 @@ test_that("build_corpus_index() passes memory_limit as string", {
 test_that("build_corpus_index() passes overwrite flag correctly", {
   local_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   build_corpus_index(corpus_dir = "/data/works", overwrite = TRUE)
@@ -74,10 +74,6 @@ test_that("build_corpus_index() passes overwrite flag correctly", {
 })
 
 test_that("build_corpus_index() root_dir mode iterates over provided data_sets", {
-  local_mocked_bindings(
-    oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
-  )
   calls <- list()
   with_mocked_bindings(
     oa_build_corpus_index = function(corpus_dir, ...) {
@@ -87,7 +83,7 @@ test_that("build_corpus_index() root_dir mode iterates over provided data_sets",
     {
       build_corpus_index(root_dir = "/vol", data_sets = c("works", "authors"))
     },
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   expect_length(calls, 2L)
   expect_equal(calls[[1L]], "/vol/parquet/works")
@@ -95,10 +91,10 @@ test_that("build_corpus_index() root_dir mode iterates over provided data_sets",
 })
 
 test_that("build_corpus_index() root_dir mode returns root_dir invisibly", {
-  local_mocked_bindings(
+  result <- with_mocked_bindings(
     oa_build_corpus_index = mock_oa_build_corpus_index,
-    .env = asNamespace("openalexSnapshot")
+    build_corpus_index(root_dir = "/vol", data_sets = "works"),
+    .package = "openalexSnapshot"
   )
-  result <- build_corpus_index(root_dir = "/vol", data_sets = "works")
   expect_equal(result, "/vol")
 })

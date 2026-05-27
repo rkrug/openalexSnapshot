@@ -22,7 +22,7 @@ test_that("lookup_by_id() errors when neither root_dir nor index_file given", {
 test_that("lookup_by_id() index_file mode calls oa_lookup_by_id with output dir", {
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   tmp <- tempfile()
   on.exit(unlink(tmp, recursive = TRUE))
@@ -39,7 +39,7 @@ test_that("lookup_by_id() index_file mode calls oa_lookup_by_id with output dir"
 test_that("lookup_by_id() index_file + output mode returns output path invisibly", {
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   tmp <- tempfile()
   on.exit(unlink(tmp, recursive = TRUE))
@@ -55,7 +55,7 @@ test_that("lookup_by_id() index_file mode with NULL output returns empty data.fr
       dir.create(output, recursive = TRUE, showWarnings = FALSE)
       invisible(NULL)
     },
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   result <- NULL
   expect_message(
@@ -69,7 +69,7 @@ test_that("lookup_by_id() index_file mode with NULL output returns empty data.fr
 test_that("lookup_by_id() coerces ids to character", {
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   tmp <- tempfile()
   on.exit(unlink(tmp, recursive = TRUE))
@@ -84,7 +84,7 @@ test_that("lookup_by_id() coerces ids to character", {
 test_that("lookup_by_id() converts workers to integer", {
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   tmp <- tempfile()
   on.exit(unlink(tmp, recursive = TRUE))
@@ -97,7 +97,7 @@ test_that("lookup_by_id() converts workers to integer", {
 test_that("lookup_by_id() defaults workers to 1L", {
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   tmp <- tempfile()
   on.exit(unlink(tmp, recursive = TRUE))
@@ -128,7 +128,7 @@ test_that("lookup_by_id() root_dir mode errors when project_dir not given", {
 
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
 
   expect_error(
@@ -145,7 +145,7 @@ test_that("lookup_by_id() root_dir mode skips missing index files with message",
 
   local_mocked_bindings(
     oa_lookup_by_id = mock_oa_lookup_by_id,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
 
   expect_message(
@@ -175,7 +175,7 @@ test_that("lookup_by_id() root_dir mode calls oa_lookup_by_id for each dataset",
       dir.create(output, recursive = TRUE, showWarnings = FALSE)
       invisible(NULL)
     },
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
 
   proj <- tempfile()
@@ -204,7 +204,7 @@ test_that("lookup_by_id() root_dir mode returns project_dir invisibly", {
       dir.create(output, recursive = TRUE, showWarnings = FALSE)
       invisible(NULL)
     },
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
 
   result <- lookup_by_id(

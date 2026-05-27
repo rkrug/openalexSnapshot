@@ -22,7 +22,7 @@ test_that("snapshot_to_parquet() errors when only parquet_dir is given", {
 test_that("snapshot_to_parquet() resolves paths from root_dir", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/Volumes/openalex")
@@ -34,7 +34,7 @@ test_that("snapshot_to_parquet() resolves paths from root_dir", {
 test_that("snapshot_to_parquet() passes explicit paths through unchanged", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(snapshot_dir = "/data/snap", parquet_dir = "/data/parq")
@@ -46,7 +46,7 @@ test_that("snapshot_to_parquet() passes explicit paths through unchanged", {
 test_that("snapshot_to_parquet() passes data_sets as character vector", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", data_sets = c("works", "authors"))
@@ -57,7 +57,7 @@ test_that("snapshot_to_parquet() passes data_sets as character vector", {
 test_that("snapshot_to_parquet() passes empty character(0) when data_sets is NULL", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", data_sets = NULL)
@@ -68,7 +68,7 @@ test_that("snapshot_to_parquet() passes empty character(0) when data_sets is NUL
 test_that("snapshot_to_parquet() converts workers to integer", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", workers = 4)
@@ -79,7 +79,7 @@ test_that("snapshot_to_parquet() converts workers to integer", {
 test_that("snapshot_to_parquet() defaults workers to 1L (sequential)", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x")
@@ -90,7 +90,7 @@ test_that("snapshot_to_parquet() defaults workers to 1L (sequential)", {
 test_that("snapshot_to_parquet() converts sample_size=0 / NULL to 0L", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", sample_size = 0)
@@ -103,7 +103,7 @@ test_that("snapshot_to_parquet() converts sample_size=0 / NULL to 0L", {
 test_that("snapshot_to_parquet() passes memory_limit as string", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", memory_limit = "8GB")
@@ -116,7 +116,7 @@ test_that("snapshot_to_parquet() passes memory_limit as string", {
 test_that("snapshot_to_parquet() passes temp_directory as string", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   last_call <<- NULL
   snapshot_to_parquet(root_dir = "/x", temp_directory = "/tmp/duckdb")
@@ -129,7 +129,7 @@ test_that("snapshot_to_parquet() passes temp_directory as string", {
 test_that("snapshot_to_parquet() returns NULL invisibly", {
   local_mocked_bindings(
     oa_snapshot_to_parquet = mock_oa_snapshot_to_parquet,
-    .env = asNamespace("openalexSnapshot")
+    .package = "openalexSnapshot"
   )
   result <- snapshot_to_parquet(root_dir = "/x")
   expect_null(result)

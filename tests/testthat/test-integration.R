@@ -6,9 +6,10 @@
 test_that("full snapshot pipeline works on fixture data", {
   skip_on_cran()
 
-  ## Guard: skip if the Rust shared library is not compiled in
-  if (!nzchar(system.file(package = "openalexSnapshot", "libs", mustWork = FALSE))) {
-    skip("openalexSnapshot not compiled")
+  ## Guard: skip if the Rust shared library is not loaded
+  ## (is.loaded checks the actual C-level entry point from extendr-wrappers.R)
+  if (!is.loaded("wrap__oa_snapshot_to_parquet", PACKAGE = "openalexSnapshot")) {
+    skip("openalexSnapshot Rust functions not loaded")
   }
 
   fixture_snapshot <- testthat::test_path("fixtures", "snapshot")
@@ -32,19 +33,23 @@ test_that("full snapshot pipeline works on fixture data", {
   ## Works parquet files
   works_parquet <- file.path(parquet_dir, "works")
   expect_true(dir.exists(works_parquet), label = "works parquet dir created")
-  works_files <- list.files(works_parquet, pattern = "\\.parquet$", full.names = TRUE)
+  works_files <- list.files(works_parquet, pattern = "\\.parquet$",
+                             full.names = TRUE, recursive = TRUE)
   expect_gte(length(works_files), 1L, label = "at least one works parquet file")
 
   ## Authors parquet files
   authors_parquet <- file.path(parquet_dir, "authors")
   expect_true(dir.exists(authors_parquet), label = "authors parquet dir created")
-  authors_files <- list.files(authors_parquet, pattern = "\\.parquet$", full.names = TRUE)
+  authors_files <- list.files(authors_parquet, pattern = "\\.parquet$",
+                               full.names = TRUE, recursive = TRUE)
   expect_gte(length(authors_files), 1L, label = "at least one authors parquet file")
 
   ## ------------------------------------------------------------------
   ## Step 2: Build corpus index for works
   ## ------------------------------------------------------------------
-  oa_build_corpus_index(
+  ## oa_build_corpus_index() returns the actual path to the created index file;
+  ## use it directly to avoid macOS /var vs /private/var symlink discrepancies.
+  index_file <- oa_build_corpus_index(
     corpus_dir   = works_parquet,
     workers      = 1L,
     memory_limit = "",
@@ -52,8 +57,8 @@ test_that("full snapshot pipeline works on fixture data", {
     verbose      = FALSE
   )
 
-  index_file <- file.path(parquet_dir, "works_id_idx.parquet")
   expect_true(file.exists(index_file), label = "works_id_idx.parquet created")
+  expect_match(index_file, "works_id_idx\\.parquet$", label = "index path ends in works_id_idx.parquet")
 
   ## ------------------------------------------------------------------
   ## Step 3: Look up two work IDs
