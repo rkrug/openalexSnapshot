@@ -49,19 +49,45 @@ extendr.
 
 ### Rust back-end (openalex-core)
 
-`~/GitHub/openalex-snapshot/src/main.rs` contains the Rust implementation. The key functions:
-- `snapshot_to_parquet` — JSON.GZ → Parquet per dataset (schema inference + rayon parallelism)
-- `build_corpus_index` — two-stage indexing (per-file shards → combined index)
-- `lookup_by_id` — ID routing via entity prefix (`W`=works, `A`=authors, etc.)
+`~/GitHub/openalex-snapshot/openalex-core/` is already a **library crate** in the workspace,
+explicitly designed to be called from R. Its `conversion` feature exposes exactly the three
+functions this package needs:
 
-To expose these via extendr:
-1. Extract the relevant logic from `src/main.rs` into a Rust library crate under
-   `~/GitHub/openalex-snapshot/` (or a separate `openalex-core` crate).
-2. Add `src/rust/` to this R package with a thin extendr wrapper crate that depends on
-   `openalex-core` and annotates the public functions with `#[extendr]`.
-3. Add `src/Makevars.in` / `src/Makevars.win.in` and `configure` / `configure.win` via
-   `rextendr::use_extendr()`.
-4. Set up GitHub Actions to cross-compile and push to r-universe.
+```
+openalex-core/src/conversion.rs
+  pub fn snapshot_to_parquet(...)   line 258
+  pub fn build_corpus_index(...)    line 786
+  pub fn lookup_by_id(...)          line 991
+  pub fn infer_api_list_type(...)   line 610  (used by openalexPro's pro_request_parquet)
+```
+
+`openalex-core/src/lib.rs` also re-exports `works_abstract_expr()` and `works_citation_expr()`
+(the SQL helpers now duplicated in `openalexPro/R/sql_helpers.R`).
+
+**Steps to wire up the extendr bridge:**
+
+1. `rextendr::use_extendr()` — adds `src/rust/` scaffolding to this R package.
+2. Write `src/rust/src/lib.rs`: a thin crate that depends on `openalex-core` with
+   `features = ["conversion"]` and wraps the pub functions with `#[extendr]`.
+3. In `src/rust/Cargo.toml`, point to openalex-core via a path or git dependency:
+   ```toml
+   [dependencies]
+   openalex-core = { path = "../../../../openalex-snapshot/openalex-core", features = ["conversion"] }
+   extendr-api = "*"
+   ```
+4. The `configure` / `configure.win` scripts from the old openalexPro extendr bridge are
+   recoverable from git history:
+   ```
+   git -C ~/GitHub/openalexPro show c86725f:configure
+   git -C ~/GitHub/openalexPro show c86725f:configure.win
+   ```
+5. Set up GitHub Actions cross-compilation and r-universe publishing.
+
+**Important:** `openalex-core` lives in a Cargo workspace. When building as a dependency from
+this R package's `src/rust/` crate, the workspace root must be discoverable or the dependency
+must be referenced via a published crate on crates.io / git URL (not a relative path that
+crosses the workspace boundary). The cleanest solution is to publish `openalex-core` to
+crates.io, or reference it via a git URL with `tag = "vX.Y.Z"`.
 
 ## Common Commands
 
