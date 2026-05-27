@@ -1,0 +1,42 @@
+url: https://rkrug.github.io/openalexSnapshot
+
+template:
+  bootstrap: 5
+
+home:
+  title: "openalexSnapshot -- OpenAlex Bulk Snapshot Tools"
+  description: "Convert, index, and query the OpenAlex bulk snapshot using a Rust-backed R package."
+
+navbar:
+  left:
+    - icon: fa-home
+      href: index.html
+    - text: "Get Started"
+      href: articles/snapshot-workflow.html
+    - text: "Articles"
+      menu:
+        - text: "Snapshot Workflow"
+          href: articles/snapshot-workflow.html
+        - text: "Snapshot Conversion"
+          href: articles/snapshot-conversion.html
+    - text: "Reference"
+      href: reference/index.html
+    - text: "Changelog"
+      href: news/index.html
+
+reference:
+  - title: "Snapshot Processing"
+    desc: "High-level R wrappers for snapshot conversion, indexing, and record retrieval."
+    contents:
+      - snapshot_to_parquet
+      - build_corpus_index
+      - lookup_by_id
+  - title: "Rust Back-end"
+    desc: "Direct wrappers around the compiled Rust functions. Called by the high-level functions above."
+    contents:
+      - oa_snapshot_to_parquet
+      - oa_build_corpus_index
+      - oa_lookup_by_id
+  - title: "Package"
+    contents:
+      - openalexSnapshot-package
