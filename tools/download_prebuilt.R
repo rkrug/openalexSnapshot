@@ -22,7 +22,7 @@
 ## `openalex-core` git dependency in src/rust/Cargo.toml so it always matches
 ## the exact core version this R package was built against.
 
-REPO     <- "rkrug/openalex-snapshot"   # Rust core repo; update after org transfer
+REPO     <- "openalexPro/openalex-snapshot"   # Rust core repo; update after org transfer
 DEST_DIR  <- file.path("src", "prebuilt")
 DEST_FILE <- file.path(DEST_DIR, "libopenalexSnapshot.a")
 

@@ -10,8 +10,9 @@ Description: Provides tools for working with the OpenAlex bulk snapshot:
     (openalex-core via extendr); a pure-R/DuckDB fallback is included for
     environments without a Rust toolchain.
 License: GPL (>= 2)
-URL: https://github.com/rkrug/openalexSnapshot
-BugReports: https://github.com/rkrug/openalexSnapshot/issues
+URL: https://github.com/openalexPro/openalexSnapshot, https://openalexpro.github.io/openalexSnapshot/
+BugReports: https://github.com/openalexPro/openalexSnapshot/issues
+Additional_repositories: https://openalexpro.r-universe.dev
 SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0
 Encoding: UTF-8
 Config/rextendr/version: 0.3.1
