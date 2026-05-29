@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20448992.svg)](https://doi.org/10.5281/zenodo.20448992)
+
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # openalexSnapshot
