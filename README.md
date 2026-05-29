@@ -4,7 +4,7 @@
 
 <!-- badges: start -->
 [![r-universe](https://rkrug.r-universe.dev/badges/openalexSnapshot)](https://rkrug.r-universe.dev/openalexSnapshot)
-[![Codecov test coverage](https://codecov.io/gh/rkrug/openalexSnapshot/graph/badge.svg)](https://app.codecov.io/gh/rkrug/openalexSnapshot)
+[![Codecov test coverage](https://codecov.io/gh/openalexPro/openalexSnapshot/graph/badge.svg)](https://app.codecov.io/gh/openalexPro/openalexSnapshot)
 <!-- badges: end -->
 
 `openalexSnapshot` converts the [OpenAlex bulk
@@ -14,7 +14,7 @@ indexes, and extracts individual records by OpenAlex ID. The heavy
 lifting is done by a compiled Rust library (statically linked via
 [extendr](https://extendr.github.io/)), with no external binary
 dependency. For API-based access to OpenAlex, see
-[openalexPro](https://rkrug.github.io/openalexPro).
+[openalexPro](https://openalexpro.github.io/openalexPro).
 
 ## Installation
 
@@ -32,7 +32,7 @@ Install the development version from GitHub:
 
 ``` r
 # install.packages("pak")
-pak::pak("rkrug/openalexSnapshot")
+pak::pak("openalexPro/openalexSnapshot")
 ```
 
 ## Hardware Requirements
@@ -80,16 +80,16 @@ works <- open_dataset(out_dir) |> collect()
 ## Documentation
 
 Full documentation and articles are available at
-<https://rkrug.github.io/openalexSnapshot>.
+<https://openalexpro.github.io/openalexSnapshot>.
 
 - [Working with the OpenAlex Bulk
-  Snapshot](https://rkrug.github.io/openalexSnapshot/articles/snapshot-workflow.html)
+  Snapshot](https://openalexpro.github.io/openalexSnapshot/articles/snapshot-workflow.html)
   — download, convert, index, and query the full snapshot
 - [Snapshot Conversion: From JSON to
-  Parquet](https://rkrug.github.io/openalexSnapshot/articles/snapshot-conversion.html)
+  Parquet](https://openalexpro.github.io/openalexSnapshot/articles/snapshot-conversion.html)
   — detailed function reference
 
 ## Related packages
 
-- [openalexPro](https://rkrug.github.io/openalexPro) — API access,
+- [openalexPro](https://openalexpro.github.io/openalexPro) — API access,
   tidy data frames, and advanced OpenAlex workflows
