@@ -2,20 +2,53 @@
 ##
 ## Called by `configure` before `tools/config.R`.
 ## Downloads the pre-compiled libopenalexSnapshot.a for the current platform
-## from the `prebuilt-libs` GitHub Release and writes it to
-## `src/prebuilt/libopenalexSnapshot.a`.
+## from the versioned GitHub Release in the openalex-snapshot (Rust core) repo
+## and writes it to `src/prebuilt/libopenalexSnapshot.a`.
 ##
-## If the download succeeds, config.R / Makevars.in will use the cached binary
-## and skip `cargo build` entirely (~2 min vs ~40 min).
+## The release tag is derived automatically from the `openalex-core` git
+## dependency tag pinned in `src/rust/Cargo.toml` (e.g. "v0.5.0"), ensuring
+## the prebuilt binary always matches the core version in use.
+##
+## If the download succeeds, config.R / Makevars.in will use the prebuilt
+## binary and skip `cargo build` entirely (~2 min vs ~50 min).
 ##
 ## Opt-out: set OPENALEXSNAPSHOT_BUILD_FROM_SOURCE=true to force compilation.
+## Override tag:  set OPENALEXSNAPSHOT_PREBUILT_RELEASE=v0.5.0
 
 ## ---- configuration ---------------------------------------------------------
 
-REPO      <- "rkrug/openalexSnapshot"   # update after org transfer
-RELEASE   <- Sys.getenv("OPENALEXSNAPSHOT_PREBUILT_RELEASE", "prebuilt-libs")
+## Prebuilt libs are published by openalex-snapshot (the Rust core repo) on
+## each versioned release.  The tag to download is read from the pinned
+## `openalex-core` git dependency in src/rust/Cargo.toml so it always matches
+## the exact core version this R package was built against.
+
+REPO     <- "rkrug/openalex-snapshot"   # Rust core repo; update after org transfer
 DEST_DIR  <- file.path("src", "prebuilt")
 DEST_FILE <- file.path(DEST_DIR, "libopenalexSnapshot.a")
+
+## Determine the release tag: env-var override → parse Cargo.toml → give up
+get_release_tag <- function() {
+  override <- Sys.getenv("OPENALEXSNAPSHOT_PREBUILT_RELEASE", "")
+  if (nzchar(override)) return(override)
+
+  cargo_toml <- file.path("src", "rust", "Cargo.toml")
+  if (!file.exists(cargo_toml)) {
+    message("[prebuilt] src/rust/Cargo.toml not found — cannot determine release tag.")
+    return(NULL)
+  }
+  lines <- readLines(cargo_toml, warn = FALSE)
+  tag_lines <- grep('tag\\s*=\\s*"v', lines, value = TRUE)
+  if (length(tag_lines) == 0) {
+    message("[prebuilt] No tag = \"v...\" found in Cargo.toml — cannot determine release tag.")
+    return(NULL)
+  }
+  m <- regmatches(tag_lines[[1]], regexpr('v[0-9]+\\.[0-9]+\\.[0-9]+[^"]*', tag_lines[[1]]))
+  if (length(m) == 0) return(NULL)
+  m
+}
+
+RELEASE <- get_release_tag()
+if (is.null(RELEASE)) quit(status = 0)   # non-fatal: configure continues to config.R
 
 ## ---- opt-out ---------------------------------------------------------------
 
