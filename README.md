@@ -1,4 +1,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20448992.svg)](https://doi.org/10.5281/zenodo.20448992)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html)
+[![License: GPL-2+](https://img.shields.io/badge/License-GPL%20%3E%3D%202-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
+[![Codecov](https://codecov.io/gh/openalexPro/openalexSnapshot/graph/badge.svg)](https://app.codecov.io/gh/openalexPro/openalexSnapshot)
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
@@ -6,7 +9,6 @@
 
 <!-- badges: start -->
 [![r-universe](https://rkrug.r-universe.dev/badges/openalexSnapshot)](https://rkrug.r-universe.dev/openalexSnapshot)
-[![Codecov test coverage](https://codecov.io/gh/openalexPro/openalexSnapshot/graph/badge.svg)](https://app.codecov.io/gh/openalexPro/openalexSnapshot)
 <!-- badges: end -->
 
 `openalexSnapshot` converts the [OpenAlex bulk
