@@ -18,34 +18,47 @@ an informative error pointing users here.
 
 ## Architecture
 
-### Design decision: Rust-only, no pure-R fallback
+### Design decision: pure R by default, Rust as an optional accelerator
 
-`openalexSnapshot` is **Rust-only**. There is no pure-R/DuckDB fallback and none is planned.
+`openalexSnapshot` is moving to a **pure-R/DuckDB** implementation, with the compiled Rust
+back-end retained as an optional accelerator. This reverses the earlier "Rust-only, no pure-R
+fallback" position; see Part 4 of `../compatibility_report.md` for the measurement that drove
+the change.
 
-**Rationale:** Maintaining two implementations (Rust + R) in parallel doubles the maintenance
-burden and invites subtle divergence. The historical motivation for pure-R fallbacks was Rust
-toolchain installation friction at the user's machine — that problem is solved at the distribution
-layer instead:
+**Rationale (measured, not assumed).** For `index` and `extract` the work is parquet decode
+and write, not computation — a single DuckDB thread already saturates the pipeline, so Rust's
+expected advantage is ~1.0-1.5x and the real corpus lives on an external volume where cold I/O
+dominates and is language-neutral. `enrich` was the one place Rust genuinely paid off (~10x),
+and moving enrichment from download-time to extract-time removes that step in batch form
+entirely. Dropping the Rust *requirement* also removes the toolchain dependency, restores a
+realistic CRAN path, and eliminates the `openalex-core` git-tag pinning problem.
 
-- **r-universe** (or GitHub Actions) pre-compiles binaries for macOS (arm64 + x86_64), Linux
-  (x86_64), and Windows before each release.
-- Users install with `pak::pak("rkrug/openalexSnapshot")` and receive a pre-built binary — no
-  Cargo required.
-- Only package developers and CI need Rust installed.
+**Mechanism.** `build_corpus_index()` and `lookup_by_id()` take
+`backend = c("auto", "r", "rust")`:
 
-The pure-R `_R` variants from openalexPro are available in git history if ever needed as
-reference:
+| value | behaviour |
+|---|---|
+| `"auto"` (default) | Rust when the compiled library is loaded, otherwise R |
+| `"r"` | pure R/DuckDB — always available, and what CI exercises |
+| `"rust"` | force the compiled path; errors if it is not loaded |
+
+| function | R backend | Rust backend |
+|---|---|---|
+| `build_corpus_index()` | yes | yes |
+| `lookup_by_id()` | yes | yes |
+| `snapshot_to_parquet()` | **no** | yes (only) |
+| `build_citation_index()`, `build_doi_index()`, `get_citing()`, `get_cited()`, `doi_to_id()`, `lookup_by_doi()` | **yes (only)** | no |
+
+`snapshot_to_parquet()` stays Rust-only deliberately: it is the hardest to port (JSON schema
+inference), it is not on the critical path for the offline citation graph, and the official
+OpenAlex snapshot is now published natively in parquet, so JSON conversion is a legacy path.
+
+The pure-R implementations that seeded this work are in openalexPro's git history:
 ```
-git -C ~/GitHub/openalexPro show 70539a0:R/snapshot_to_parquet.R
 git -C ~/GitHub/openalexPro show 70539a0:R/build_corpus_index.R
 git -C ~/GitHub/openalexPro show 70539a0:R/lookup_by_id.R
+git -C ~/GitHub/openalexPro show 70539a0:R/snapshot_to_parquet.R
 ```
-
-### Current state (stubs)
-
-All three functions currently raise "not yet implemented" errors. They have the correct argument
-signatures (preserved from openalexPro). The Rust back-end still needs to be wired up via
-extendr.
 
 ### Rust back-end (openalex-core)
 
@@ -100,8 +113,9 @@ devtools::check()         # Full R CMD CHECK
 
 ## Branching
 
-- Work on `claude/<description>` branches from `main` (single-branch repo for now)
-- `main` receives release commits
+- Work on `claude/<description>` branches from **`dev`**; merge back into `dev`
+- `main` receives release commits; never commit to it directly
+- `main` and `dev` are long-lived; do not delete `dev` after a PR merge
 
 ## Key Conventions
 
@@ -109,4 +123,26 @@ devtools::check()         # Full R CMD CHECK
   `project_dir` convention for API work)
 - OpenAlex IDs accepted in both short form (`W2741809807`) and long form
   (`https://openalex.org/W2741809807`)
-- Index files are named `<dataset>_id_idx.parquet` and live alongside the dataset Parquet directory
+- Index files live alongside the dataset Parquet directory. Two shapes:
+  - `<dataset>_id_idx.parquet`, `<dataset>_doi_idx.parquet` — single sorted **files**
+  - `<dataset>_cite_idx/` — a hive **directory** partitioned by `cited_block`. It is a
+    directory because a 3-billion-row single file cannot be built without a global sort and
+    its footer alone would cost tens of MB to parse on every query
+- `cited_block = floor(numeric_id / 1e7)` (i.e. `id_block(x) %/% 1000L`) — ~351 partitions.
+  Plain `id_block()`'s `floor(n/1e4)` would give 714k partitions and is unusable as a
+  partition key. `block_size` is recorded in `_index_meta.parquet` and must be **read from
+  there**, never assumed
+- `_index_meta.parquet` is written **last** by an index builder; its presence is the
+  "this index is complete" signal
+- `add_columns` values are embedded as **single-quoted SQL string literals**, matching
+  `openalexPro::pro_request_parquet()`. That is why `oa_input` round-trips as VARCHAR and is
+  cast to BOOLEAN at node-assembly time — it lets openalexSnowball share one assembly step
+  across the API and snapshot paths
+- DOI keys are normalised with the internal `.oas_normalize_doi()` (strip resolver, lowercase,
+  trim), **not** `openalexPro::extract_doi()`. The latter is an extractor, not a normaliser: it
+  returns a substring of a wrong input rather than failing. openalexSnapshot also takes no
+  openalexPro dependency, deliberately — it is the offline half of the ecosystem and must not
+  pull in httr2/curl/jqr
+- `referenced_works` is `VARCHAR[]` in the official parquet but a JSON `VARCHAR` in the legacy
+  converted corpus. Sniff the type in R (a SQL `CASE WHEN typeof(...)` will not bind) and use
+  `json_extract_string(x, '$[*]')` for the JSON form

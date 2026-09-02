@@ -1,29 +1,42 @@
 Package: openalexSnapshot
 Title: OpenAlex Bulk Snapshot Conversion, Indexing, and Record Extraction
-Version: 0.0.2
+Version: 0.1.0
 Author: Rainer M Krug
 Maintainer: Rainer M Krug <Rainer@krugs.de>
 Description: Provides tools for working with the OpenAlex bulk snapshot:
-    converting .json.gz files to Parquet format, building ID-lookup indexes
-    over the resulting corpus, and extracting records by OpenAlex ID.
-    Large-scale operations delegate to a compiled Rust back-end
-    (openalex-core via extendr); a pure-R/DuckDB fallback is included for
-    environments without a Rust toolchain.
+    converting .json.gz files to Parquet format, building ID, DOI and
+    inverted-citation indexes over the resulting corpus, and extracting
+    records by OpenAlex ID or DOI. Also provides an offline view of the
+    citation graph, so the works citing or cited by a given paper can be
+    retrieved without network access. Indexing and extraction are implemented
+    in R over DuckDB; snapshot conversion delegates to a compiled Rust
+    back-end (openalex-core via extendr).
 License: GPL (>= 2)
 URL: https://github.com/openalexPro/openalexSnapshot, https://openalexpro.github.io/openalexSnapshot/, https://doi.org/10.5281/zenodo.20448992
 BugReports: https://github.com/openalexPro/openalexSnapshot/issues
 Additional_repositories: https://openalexpro.r-universe.dev
-SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0
+SystemRequirements: Cargo (Rust's package manager) and rustc >= 1.65.0, required
+    only for snapshot_to_parquet(); all other functionality is pure R.
 Encoding: UTF-8
 Config/rextendr/version: 0.3.1
 Depends:
     R (>= 4.1.0)
 Imports:
     arrow,
-    dplyr
+    DBI,
+    dplyr,
+    duckdb,
+    future,
+    future.apply,
+    progressr,
+    rlang
 Suggests:
-    testthat (>= 3.0.0),
-    pak
+    knitr,
+    pak,
+    quarto,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: quarto
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0
