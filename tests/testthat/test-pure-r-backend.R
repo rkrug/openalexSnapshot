@@ -5,27 +5,6 @@
 # backend is that it can be exercised without a compiled library, so these
 # tests must not skip on a machine that has no Rust toolchain.
 
-make_tiny_corpus <- function(dir, n = 12L, start = 1000000L) {
-  works <- file.path(dir, "parquet", "works", "updated_date=2020-01-01")
-  dir.create(works, recursive = TRUE, showWarnings = FALSE)
-  ids <- paste0("https://openalex.org/W", start + seq_len(n))
-  df <- data.frame(
-    id = ids,
-    doi = c(paste0("https://doi.org/10.1234/test.", seq_len(n - 1L)), NA),
-    title = paste("Work", seq_len(n)),
-    publication_year = 2000L + seq_len(n),
-    stringsAsFactors = FALSE
-  )
-  # referenced_works as a JSON VARCHAR, matching the legacy converted corpus
-  df$referenced_works <- vapply(seq_len(n), function(i) {
-    if (i == 1L) return(NA_character_)
-    if (i == 2L) return("[]")
-    paste0("[", paste0('"', ids[seq_len(min(i - 1L, 3L))], '"', collapse = ","), "]")
-  }, character(1))
-  arrow::write_parquet(df, file.path(works, "part_0000.parquet"))
-  file.path(dir, "parquet", "works")
-}
-
 test_that(".oas_parquet_root accepts a root_dir, a parquet dir, or neither", {
   tmp <- withr::local_tempdir()
   corpus <- make_tiny_corpus(tmp)
@@ -82,7 +61,7 @@ test_that("lookup_by_id(backend = 'r') round-trips records", {
   tmp <- withr::local_tempdir()
   corpus <- make_tiny_corpus(tmp)
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
-  ids <- paste0("W", 1000001L:1000003L)
+  ids <- tiny_ids()[1:3]
 
   got <- lookup_by_id(ids = ids, index_file = idx, backend = "r", verbose = FALSE)
   expect_equal(nrow(got), 3L)
@@ -96,10 +75,10 @@ test_that("lookup_by_id(backend = 'r') accepts short and long form ids alike", {
   corpus <- make_tiny_corpus(tmp)
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
 
-  short <- lookup_by_id(ids = "W1000001", index_file = idx, backend = "r",
+  short <- lookup_by_id(ids = tiny_ids()[1], index_file = idx, backend = "r",
                         verbose = FALSE)
-  long  <- lookup_by_id(ids = "https://openalex.org/W1000001", index_file = idx,
-                        backend = "r", verbose = FALSE)
+  long  <- lookup_by_id(ids = paste0("https://openalex.org/", tiny_ids()[1]),
+                        index_file = idx, backend = "r", verbose = FALSE)
   expect_equal(short$id, long$id)
 })
 
@@ -108,7 +87,7 @@ test_that("lookup_by_id(backend = 'r') projects columns", {
   corpus <- make_tiny_corpus(tmp)
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
 
-  got <- lookup_by_id(ids = "W1000005", index_file = idx, backend = "r",
+  got <- lookup_by_id(ids = tiny_ids()[5], index_file = idx, backend = "r",
                       columns = c("id", "referenced_works"), verbose = FALSE)
   expect_equal(names(got), c("id", "referenced_works"))
 })
@@ -119,7 +98,7 @@ test_that("lookup_by_id(backend = 'r') injects add_columns as SQL literals", {
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
 
   got <- lookup_by_id(
-    ids = c("W1000001", "W1000002"), index_file = idx, backend = "r",
+    ids = tiny_ids()[1:2], index_file = idx, backend = "r",
     columns = "id",
     add_columns = list(oa_input = "TRUE", relation = "keypaper"),
     verbose = FALSE
@@ -139,7 +118,7 @@ test_that("lookup_by_id(backend = 'r') writes parquet when output is given", {
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
   out <- file.path(tmp, "extract")
 
-  res <- lookup_by_id(ids = c("W1000001", "W1000002"), index_file = idx,
+  res <- lookup_by_id(ids = tiny_ids()[1:2], index_file = idx,
                       backend = "r", output = out, verbose = FALSE)
   expect_equal(res, out)
   expect_gt(length(list.files(out, pattern = "\\.parquet$")), 0L)

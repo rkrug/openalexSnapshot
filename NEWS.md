@@ -1,5 +1,45 @@
 # openalexSnapshot 0.1.0
 
+## New: offline citation graph
+
+The snapshot can now answer "which works cite this one?" without network
+access. `cited_by_api_url` is a URL and useless offline, but the citing
+direction is recoverable by inverting the `referenced_works` every work
+already carries.
+
+* **`build_citation_index()`** inverts `referenced_works` into an edge set
+  keyed by the cited work. Unlike the `_id_idx` and `_doi_idx` files this is a
+  hive-partitioned **directory** (`works_cite_idx/cited_block=N/`), because the
+  full corpus holds roughly three billion edges: a single sorted file would
+  need a global sort of that many rows and a footer costing tens of MB to parse
+  per query. Measured on the real corpus this costs about 5 bytes per edge
+  (~15 GB total) and turns a 20-second scan into a 5-millisecond lookup.
+
+* **`build_doi_index()`** builds `works_doi_idx.parquet`, so DOIs resolve
+  offline. DOIs are accepted with or without a resolver prefix -- bare,
+  `https://doi.org/`, `http://dx.doi.org/`, `doi:` and mixed case all normalise
+  to the same key.
+
+* **`get_citing()`** and **`get_cited()`** query the above. `keypaper` is a
+  vector and may mix short IDs, long IDs, bare DOIs and resolver DOIs in one
+  call; all are resolved and queried in a single pass. The default return is an
+  edge list (`from`, `to`, where a row `A, B` means A cites B) rather than a
+  flat ID vector, which keeps the mapping between each keypaper and its
+  neighbours. `return = "ids"` and `return = "records"` are also available.
+
+  `get_cited()` deliberately needs **no** citation index: the works a paper
+  references are simply its own `referenced_works`.
+
+* **`doi_to_id()`** and **`lookup_by_doi()`** resolve and extract by DOI.
+  Unresolved DOIs are returned as `NA` in input order and warned about, never
+  silently dropped.
+
+* Missing indexes raise typed conditions
+  (`openalexSnapshot_missing_citation_index` and friends) naming the builder
+  that creates them, and distinguish an absent index from an interrupted build.
+  An index that looks out of step with the corpus **warns rather than errors** --
+  a deliberately frozen snapshot must stay usable.
+
 ## Design change: pure R by default, Rust as an optional accelerator
 
 * **The "Rust-only, no pure-R fallback" decision recorded in 0.0.0.9000 is
