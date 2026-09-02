@@ -11,7 +11,8 @@ build_corpus_index(
   memory_limit = NULL,
   overwrite = FALSE,
   verbose = TRUE,
-  corpus_dir = NULL
+  corpus_dir = NULL,
+  backend = c("auto", "r", "rust")
 )
 }
 \arguments{
@@ -37,6 +38,12 @@ by \code{\link[=snapshot_to_parquet]{snapshot_to_parquet()}}. If provided, the i
 \code{"/Volumes/openalex/parquet/works"}). The index is written as a sibling
 file: \verb{<parent>/<basename>_id_idx.parquet}. When this is provided,
 \code{root_dir} and \code{data_sets} are ignored.}
+
+\item{backend}{Which implementation to use. \code{"auto"} (the default) uses the
+compiled Rust library when it is loaded and the pure-R/DuckDB
+implementation otherwise, so behaviour is unchanged for an installed
+binary. \code{"r"} forces pure R and is always available. \code{"rust"} forces the
+compiled path and errors if it is not loaded.}
 }
 \value{
 When \code{corpus_dir} is provided, invisibly returns the path to the

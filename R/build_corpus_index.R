@@ -29,6 +29,11 @@
 #'   `"/Volumes/openalex/parquet/works"`). The index is written as a sibling
 #'   file: `<parent>/<basename>_id_idx.parquet`. When this is provided,
 #'   `root_dir` and `data_sets` are ignored.
+#' @param backend Which implementation to use. `"auto"` (the default) uses the
+#'   compiled Rust library when it is loaded and the pure-R/DuckDB
+#'   implementation otherwise, so behaviour is unchanged for an installed
+#'   binary. `"r"` forces pure R and is always available. `"rust"` forces the
+#'   compiled path and errors if it is not loaded.
 #'
 #' @return When `corpus_dir` is provided, invisibly returns the path to the
 #'   created index file. When `root_dir` is used, invisibly returns `root_dir`.
@@ -69,21 +74,36 @@ build_corpus_index <- function(
   memory_limit = NULL,
   overwrite    = FALSE,
   verbose      = TRUE,
-  corpus_dir   = NULL
+  corpus_dir   = NULL,
+  backend      = c("auto", "r", "rust")
 ) {
+  backend          <- .oas_backend(backend)
   workers_int      <- as.integer(if (is.null(workers)) 1L else workers)
   memory_limit_str <- if (is.null(memory_limit)) "" else as.character(memory_limit)
 
+  build_one <- function(dir) {
+    if (backend == "rust") {
+      oa_build_corpus_index(
+        corpus_dir   = dir,
+        workers      = workers_int,
+        memory_limit = memory_limit_str,
+        overwrite    = isTRUE(overwrite),
+        verbose      = isTRUE(verbose)
+      )
+    } else {
+      .oas_build_one_index(
+        corpus_dir   = dir,
+        workers      = workers,
+        memory_limit = memory_limit,
+        overwrite    = isTRUE(overwrite),
+        verbose      = isTRUE(verbose)
+      )
+    }
+  }
+
   # corpus_dir mode: index a single explicit directory -------------------------
   if (!is.null(corpus_dir)) {
-    idx_path <- oa_build_corpus_index(
-      corpus_dir   = corpus_dir,
-      workers      = workers_int,
-      memory_limit = memory_limit_str,
-      overwrite    = isTRUE(overwrite),
-      verbose      = isTRUE(verbose)
-    )
-    return(invisible(idx_path))
+    return(invisible(build_one(corpus_dir)))
   }
 
   # root_dir mode: iterate over datasets ---------------------------------------
@@ -94,7 +114,7 @@ build_corpus_index <- function(
     )
   }
 
-  parquet_root <- file.path(root_dir, "parquet")
+  parquet_root <- .oas_parquet_root(root_dir)
 
   if (is.null(data_sets)) {
     data_sets <- list.dirs(parquet_root, recursive = FALSE, full.names = FALSE)
@@ -102,13 +122,7 @@ build_corpus_index <- function(
   }
 
   for (ds in data_sets) {
-    oa_build_corpus_index(
-      corpus_dir   = file.path(parquet_root, ds),
-      workers      = workers_int,
-      memory_limit = memory_limit_str,
-      overwrite    = isTRUE(overwrite),
-      verbose      = isTRUE(verbose)
-    )
+    build_one(file.path(parquet_root, ds))
   }
 
   invisible(root_dir)

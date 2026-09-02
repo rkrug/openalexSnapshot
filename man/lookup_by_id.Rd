@@ -14,7 +14,10 @@ lookup_by_id(
   verbose = TRUE,
   index_file = NULL,
   selected = NULL,
-  output = NULL
+  output = NULL,
+  backend = c("auto", "r", "rust"),
+  columns = NULL,
+  add_columns = NULL
 )
 }
 \arguments{
@@ -52,6 +55,22 @@ is \code{NULL} (all columns).}
 files when using \code{index_file} mode. If \code{NULL} (default), results are
 returned as a data frame. Ignored when \code{root_dir} is used (use
 \code{project_dir} instead).}
+
+\item{backend}{Which implementation to use. \code{"auto"} (the default) uses the
+compiled Rust library when it is loaded and the pure-R/DuckDB
+implementation otherwise. \code{"r"} forces pure R and is always available.
+\code{"rust"} forces the compiled path and errors if it is not loaded.}
+
+\item{columns}{Character vector of columns to return. \code{NULL} (default)
+returns all. Projection matters: reading 2 of 51 columns from a corpus of
+nested structs is far cheaper than \verb{SELECT *}. Requires
+\code{backend = "r"} — the compiled path always reads every column.}
+
+\item{add_columns}{Named list of constant columns to add to every returned
+row, e.g. \code{list(relation = "citing")}. Values are embedded as \strong{SQL string
+literals}, matching \code{openalexPro::pro_request_parquet()}, so a logical
+must be passed as \code{"TRUE"} and cast by the caller. Requires
+\code{backend = "r"}.}
 }
 \value{
 \itemize{
