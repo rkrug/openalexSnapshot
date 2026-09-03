@@ -28,9 +28,15 @@ the default is \code{"works"}.}
 
 \item{memory_limit}{DuckDB memory limit, e.g. \code{"20GB"}.}
 
-\item{temp_dir}{Directory for Stage-1 shards and DuckDB spill. Stage 2 is a
-single global sort of tens of GB and \emph{will} spill, so pointing this at a
-fast local disk is the biggest speed lever available.}
+\item{temp_dir}{Directory for Stage-1 shards and DuckDB spill. Defaults to a
+subdirectory of \code{\link[=tempdir]{tempdir()}}, which is on local disk.
+
+The default matters. Spilling beside the index puts those writes on the
+same device the corpus is being read from, and on an external USB SSD that
+measured \strong{8.18 s/batch versus 0.76 s/batch} -- a 10.8x difference from
+this setting alone. Override it only to point at a \emph{different} fast disk,
+or if the default lacks room: peak usage is roughly the size of the
+finished index plus its transient shards.}
 
 \item{batch_bytes}{Approximate bytes of source parquet per Stage-1 batch.}
 

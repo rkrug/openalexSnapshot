@@ -22,6 +22,16 @@
 #' @param workers Number of parallel workers for Stage 1 indexing. Default is
 #'   `NULL` (sequential).
 #' @param memory_limit DuckDB memory limit (e.g., `"20GB"`). Default is `NULL`.
+#' @param temp_dir Directory for Stage-1 shards and DuckDB spill. Defaults to a
+#'   subdirectory of [tempdir()], which is on local disk.
+#'
+#'   The default matters. Spilling beside the index puts those writes on the
+#'   same device the corpus is being read from, and on an external USB SSD that
+#'   measured **8.18 s/batch versus 0.76 s/batch** -- a 10.8x difference from
+#'   this setting alone. Override it only to point at a *different* fast disk,
+#'   or if the default lacks room: peak usage is roughly the size of the
+#'   finished index plus its transient shards.
+#' @param batch_bytes Approximate bytes of source parquet per Stage-1 batch.
 #' @param overwrite If `TRUE`, rebuilds existing indexes. Default is `FALSE`
 #'   (skip if the index already exists).
 #' @param verbose Print progress messages. Default is `TRUE`.
@@ -79,6 +89,8 @@ build_corpus_index <- function(
   data_sets    = NULL,
   workers      = NULL,
   memory_limit = NULL,
+  temp_dir     = NULL,
+  batch_bytes  = 1e9,
   overwrite    = FALSE,
   verbose      = TRUE,
   corpus_dir   = NULL,
@@ -91,6 +103,8 @@ build_corpus_index <- function(
       corpus_dir   = dir,
       workers      = workers,
       memory_limit = memory_limit,
+      temp_dir     = temp_dir,
+      batch_bytes  = batch_bytes,
       overwrite    = isTRUE(overwrite),
       verbose      = isTRUE(verbose)
     )

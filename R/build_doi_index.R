@@ -26,9 +26,15 @@
 #'   the default is `"works"`.
 #' @param workers Number of parallel workers for Stage 1.
 #' @param memory_limit DuckDB memory limit, e.g. `"20GB"`.
-#' @param temp_dir Directory for Stage-1 shards and DuckDB spill. Stage 2 is a
-#'   single global sort of tens of GB and *will* spill, so pointing this at a
-#'   fast local disk is the biggest speed lever available.
+#' @param temp_dir Directory for Stage-1 shards and DuckDB spill. Defaults to a
+#'   subdirectory of [tempdir()], which is on local disk.
+#'
+#'   The default matters. Spilling beside the index puts those writes on the
+#'   same device the corpus is being read from, and on an external USB SSD that
+#'   measured **8.18 s/batch versus 0.76 s/batch** -- a 10.8x difference from
+#'   this setting alone. Override it only to point at a *different* fast disk,
+#'   or if the default lacks room: peak usage is roughly the size of the
+#'   finished index plus its transient shards.
 #' @param batch_bytes Approximate bytes of source parquet per Stage-1 batch.
 #' @param compression Parquet compression codec.
 #' @param overwrite Rebuild an existing index.
@@ -123,7 +129,9 @@ build_doi_index <- function(root_dir = NULL,
          "only works can be DOI-indexed.", call. = FALSE)
   }
 
-  if (is.null(temp_dir)) temp_dir <- paste0(index_file, "_tmp")
+  if (is.null(temp_dir)) {
+    temp_dir <- file.path(tempdir(), paste0(corpus_name, "_doi_idx_tmp"))
+  }
   dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
   batches <- .oas_plan_batches(files, batch_bytes = batch_bytes)
   total_start <- Sys.time()

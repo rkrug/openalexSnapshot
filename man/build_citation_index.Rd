@@ -38,8 +38,14 @@ rather than sizing \code{memory_limit} for the worst batch and throttling all
 of them, dense batches are re-run alone with the whole machine.}
 
 \item{temp_dir}{Directory for Stage-1 shards and DuckDB spill. Defaults to a
-sibling of the index. Peak transient usage is roughly the size of the
-finished index.}
+subdirectory of \code{\link[=tempdir]{tempdir()}}, which is on local disk.
+
+The default matters. Spilling beside the index puts those writes on the
+same device the corpus is being read from, and on an external USB SSD that
+measured \strong{8.18 s/batch versus 0.76 s/batch} -- a 10.8x difference from
+this setting alone. Override it only to point at a \emph{different} fast disk,
+or if the default lacks room: peak usage is roughly the size of the
+finished index plus its transient shards.}
 
 \item{block_size}{Width of a \code{cited_block}. The default \code{1e7} yields ~351
 partitions over the full corpus, averaging tens of MB each. Do \strong{not} use

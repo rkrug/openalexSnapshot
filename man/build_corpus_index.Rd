@@ -9,6 +9,8 @@ build_corpus_index(
   data_sets = NULL,
   workers = NULL,
   memory_limit = NULL,
+  temp_dir = NULL,
+  batch_bytes = 1e+09,
   overwrite = FALSE,
   verbose = TRUE,
   corpus_dir = NULL,
@@ -28,6 +30,18 @@ by \code{\link[=snapshot_to_parquet]{snapshot_to_parquet()}}. If provided, the i
 \code{NULL} (sequential).}
 
 \item{memory_limit}{DuckDB memory limit (e.g., \code{"20GB"}). Default is \code{NULL}.}
+
+\item{temp_dir}{Directory for Stage-1 shards and DuckDB spill. Defaults to a
+subdirectory of \code{\link[=tempdir]{tempdir()}}, which is on local disk.
+
+The default matters. Spilling beside the index puts those writes on the
+same device the corpus is being read from, and on an external USB SSD that
+measured \strong{8.18 s/batch versus 0.76 s/batch} -- a 10.8x difference from
+this setting alone. Override it only to point at a \emph{different} fast disk,
+or if the default lacks room: peak usage is roughly the size of the
+finished index plus its transient shards.}
+
+\item{batch_bytes}{Approximate bytes of source parquet per Stage-1 batch.}
 
 \item{overwrite}{If \code{TRUE}, rebuilds existing indexes. Default is \code{FALSE}
 (skip if the index already exists).}

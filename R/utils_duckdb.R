@@ -212,6 +212,54 @@
   batches
 }
 
+# -- disk space -------------------------------------------------------------
+
+#' Free bytes on the filesystem holding `path`
+#'
+#' Uses `df`, so it returns `NA` on platforms without it rather than guessing.
+#' Callers must treat `NA` as "unknown" and not block on it.
+#' @noRd
+.oas_free_bytes <- function(path) {
+  while (!dir.exists(path) && dirname(path) != path) path <- dirname(path)
+  out <- tryCatch(
+    suppressWarnings(system2("df", c("-Pk", shQuote(path)), stdout = TRUE, stderr = FALSE)),
+    error = function(e) NULL
+  )
+  if (length(out) < 2L) return(NA_real_)
+  f <- suppressWarnings(as.numeric(strsplit(trimws(out[[2L]]), "\\s+")[[1L]][4L]))
+  if (is.na(f)) NA_real_ else f * 1024
+}
+
+#' Refuse to start a build that cannot fit
+#'
+#' The default `temp_dir` is on local disk, which is typically far smaller than
+#' the volume holding the snapshot. Failing here beats failing with ENOSPC an
+#' hour into a build.
+#'
+#' @param temp_dir Where shards and spill will go.
+#' @param need_bytes Estimated peak requirement.
+#' @param what Label for the message.
+#' @noRd
+.oas_check_space <- function(temp_dir, need_bytes, what = "index") {
+  free <- .oas_free_bytes(temp_dir)
+  if (is.na(free)) return(invisible(NULL))          # unknown: do not block
+  gb <- function(x) round(x / 1024^3, 1)
+  if (free < need_bytes) {
+    stop(sprintf(
+      paste0("Not enough space for the %s under %s: %.1f GB free, ",
+             "an estimated %.1f GB needed.\n",
+             "Pass temp_dir = to a disk with more room. Prefer a fast local ",
+             "disk that is NOT the one holding the corpus -- spill competing ",
+             "with corpus reads is itself a large slowdown."),
+      what, temp_dir, gb(free), gb(need_bytes)), call. = FALSE)
+  }
+  if (free < need_bytes * 1.5) {
+    warning(sprintf("Only %.1f GB free under %s for the %s (estimated need %.1f GB).",
+                    gb(free), temp_dir, what, gb(need_bytes)), call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # -- referenced_works encoding ----------------------------------------------
 
 #' Determine how `referenced_works` is encoded, and how to unnest it

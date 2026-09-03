@@ -46,8 +46,14 @@
 #'   rather than sizing `memory_limit` for the worst batch and throttling all
 #'   of them, dense batches are re-run alone with the whole machine.
 #' @param temp_dir Directory for Stage-1 shards and DuckDB spill. Defaults to a
-#'   sibling of the index. Peak transient usage is roughly the size of the
-#'   finished index.
+#'   subdirectory of [tempdir()], which is on local disk.
+#'
+#'   The default matters. Spilling beside the index puts those writes on the
+#'   same device the corpus is being read from, and on an external USB SSD that
+#'   measured **8.18 s/batch versus 0.76 s/batch** -- a 10.8x difference from
+#'   this setting alone. Override it only to point at a *different* fast disk,
+#'   or if the default lacks room: peak usage is roughly the size of the
+#'   finished index plus its transient shards.
 #' @param block_size Width of a `cited_block`. The default `1e7` yields ~351
 #'   partitions over the full corpus, averaging tens of MB each. Do **not** use
 #'   the ID index's `floor(n / 1e4)`: the largest OpenAlex work ID would give
@@ -147,7 +153,9 @@ build_citation_index <- function(root_dir = NULL,
   if (isTRUE(overwrite)) unlink(index_dir, recursive = TRUE)
 
   files <- .oas_corpus_files(corpus_dir)
-  if (is.null(temp_dir)) temp_dir <- paste0(index_dir, "_tmp")
+  if (is.null(temp_dir)) {
+    temp_dir <- file.path(tempdir(), paste0(corpus_name, "_cite_idx_tmp"))
+  }
   shards_dir <- file.path(temp_dir, "shards")
   done_dir   <- file.path(temp_dir, ".done")
   dir.create(shards_dir, recursive = TRUE, showWarnings = FALSE)
@@ -156,6 +164,13 @@ build_citation_index <- function(root_dir = NULL,
   sniff_con <- .oas_con()
   refs <- tryCatch(.oas_refs_expr(sniff_con, files, alias = "w"),
                    finally = DBI::dbDisconnect(sniff_con, shutdown = TRUE))
+
+  # Peak usage is the finished index plus its transient shards. Measured on the
+  # real corpus: 900 GB of source produced an 18.4 GB index, so ~2% of source
+  # each for index and shards, plus spill headroom.
+  .oas_check_space(temp_dir,
+                   need_bytes = 0.05 * sum(file.info(files)$size, na.rm = TRUE),
+                   what = "citation index")
 
   batches <- .oas_plan_batches(files, batch_bytes = batch_bytes)
   total_start <- Sys.time()

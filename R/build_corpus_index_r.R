@@ -45,7 +45,9 @@
   }
 
   files <- .oas_corpus_files(corpus_dir)
-  if (is.null(temp_dir)) temp_dir <- paste0(index_file, "_tmp")
+  if (is.null(temp_dir)) {
+    temp_dir <- file.path(tempdir(), paste0(corpus_name, "_id_idx_tmp"))
+  }
   dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
   file.create(file.path(temp_dir, ".metadata_never_index"))
 

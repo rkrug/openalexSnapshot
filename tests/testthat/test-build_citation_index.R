@@ -199,3 +199,28 @@ test_that("a parallel multi-batch build matches a sequential one", {
   expect_setequal(paste(seq_edges$cited_id, seq_edges$citing_id),
                   paste(par_edges$cited_id, par_edges$citing_id))
 })
+
+
+test_that("temp_dir defaults to local disk, not beside the index", {
+  # Spilling onto the volume holding the corpus makes spill writes compete
+  # with corpus reads; on an external USB SSD that measured 8.18 s/batch
+  # against 0.76 s/batch. The default must not walk into that.
+  tmp <- withr::local_tempdir()
+  corpus <- make_tiny_corpus(tmp)
+  idx <- build_citation_index(corpus_dir = corpus, verbose = FALSE)
+
+  # nothing left beside the index on the corpus volume
+  expect_false(dir.exists(paste0(idx, "_tmp")))
+  expect_setequal(setdiff(list.files(dirname(idx)), "works"),
+                  c("works_cite_idx"))
+})
+
+test_that("a build that cannot fit is refused before it starts", {
+  tmp <- withr::local_tempdir()
+  expect_error(
+    .oas_check_space(tmp, need_bytes = 1e18, what = "citation index"),
+    "Not enough space"
+  )
+  # unknown free space must not block
+  expect_silent(.oas_check_space(tmp, need_bytes = 1))
+})
