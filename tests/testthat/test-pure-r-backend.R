@@ -21,12 +21,15 @@ test_that("build_corpus_index(backend = 'r') produces the documented schema", {
   corpus <- make_tiny_corpus(tmp)
 
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
-  expect_true(file.exists(idx))
-  expect_match(idx, "works_id_idx\\.parquet$")
+  expect_true(dir.exists(idx))
+  expect_match(idx, "works_id_idx$")
+  expect_true(file.exists(file.path(idx, "_index_meta.parquet")))
 
-  got <- as.data.frame(arrow::read_parquet(idx))
-  expect_equal(sort(names(got)),
-               c("file_row_number", "id", "id_block", "parquet_file"))
+  parts <- list.files(idx, pattern = "part-0\\.parquet$", recursive = TRUE,
+                      full.names = TRUE)
+  expect_true(all(grepl("id_block=[0-9]+", parts)))
+  got <- as.data.frame(dplyr::collect(arrow::open_dataset(parts)))
+  expect_equal(sort(names(got)), c("file_row_number", "id", "parquet_file"))
   expect_equal(nrow(got), 12L)
 
   # id is long form; parquet_file is relative to the parquet root and includes
@@ -36,21 +39,19 @@ test_that("build_corpus_index(backend = 'r') produces the documented schema", {
                "works/updated_date=2020-01-01/part_0000.parquet")
   expect_equal(sort(got$file_row_number), 0:11)
 
-  # id_block matches the documented floor(numeric_id / 10000)
-  expect_equal(got$id_block, .oas_id_block(got$id))
 })
 
 test_that("build_corpus_index(backend = 'r') respects overwrite", {
   tmp <- withr::local_tempdir()
   corpus <- make_tiny_corpus(tmp)
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
-  before <- file.info(idx)$mtime
+  before <- .oas_read_index_meta(idx)$built_at
 
   expect_message(
     build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE),
     "creation skipped"
   )
-  expect_equal(file.info(idx)$mtime, before)
+  expect_equal(.oas_read_index_meta(idx)$built_at, before)
 
   build_corpus_index(corpus_dir = corpus, backend = "r", overwrite = TRUE,
                      verbose = FALSE)
@@ -147,28 +148,42 @@ test_that("lookup_by_id(backend = 'r') reports no matches without erroring", {
 test_that("a missing index raises a typed condition naming its builder", {
   tmp <- withr::local_tempdir()
   expect_error(
-    lookup_by_id(ids = "W1", index_file = file.path(tmp, "absent_id_idx.parquet"),
+    lookup_by_id(ids = "W1", index_file = file.path(tmp, "absent_id_idx"),
                  backend = "r", verbose = FALSE),
     class = "openalexSnapshot_missing_id_index"
   )
   expect_error(
-    lookup_by_id(ids = "W1", index_file = file.path(tmp, "absent_id_idx.parquet"),
+    lookup_by_id(ids = "W1", index_file = file.path(tmp, "absent_id_idx"),
                  backend = "r", verbose = FALSE),
     class = "openalexSnapshot_missing_index"
   )
 })
 
-test_that("the id index is written sorted by (id_block, id)", {
-  # Not cosmetic: this is the whole basis of lookup_by_id() pruning row groups
-  # instead of scanning a multi-GB file.
+test_that("each id-index partition is sorted by id", {
+  # Not cosmetic: this is the basis of pruning row groups rather than scanning.
   tmp <- withr::local_tempdir()
   corpus <- make_tiny_corpus(tmp)
   idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
 
-  got <- as.data.frame(arrow::read_parquet(idx))
-  expect_false(is.unsorted(got$id_block))
-  by_block <- split(got$id, got$id_block)
-  expect_true(all(vapply(by_block, function(x) !is.unsorted(x), logical(1))))
+  for (f in list.files(idx, pattern = "part-0\\.parquet$", recursive = TRUE,
+                       full.names = TRUE)) {
+    e <- as.data.frame(arrow::read_parquet(f))
+    expect_false(is.unsorted(e$id), label = basename(dirname(f)))
+  }
+})
+
+test_that("the id index spans several blocks and records block_size", {
+  tmp <- withr::local_tempdir()
+  corpus <- make_tiny_corpus(tmp)
+  idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
+
+  blocks <- grep("^id_block=", list.dirs(idx, recursive = FALSE,
+                                         full.names = FALSE), value = TRUE)
+  expect_gt(length(blocks), 1L)   # fixture ids are spread deliberately
+  meta <- .oas_read_index_meta(idx)
+  expect_equal(meta$index_type, "id")
+  expect_equal(as.numeric(meta$block_size), 1e7)
+  expect_equal(as.numeric(meta$n_rows), 12)
 })
 
 test_that("lookup_by_id() filters on id_block as well as id", {

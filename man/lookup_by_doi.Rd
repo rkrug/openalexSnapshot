@@ -23,7 +23,7 @@ parquet directory itself.}
 \item{index_file}{Explicit path to a \verb{*_doi_idx.parquet}. Overrides
 \code{root_dir}.}
 
-\item{id_index}{Explicit path to a \verb{*_id_idx.parquet}.}
+\item{id_index}{Explicit path to a \verb{*_id_idx} directory.}
 
 \item{data_set}{Dataset name used to locate the index under \code{root_dir}.}
 

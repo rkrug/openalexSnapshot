@@ -23,7 +23,7 @@ lookup_by_id(
 \arguments{
 \item{root_dir}{Root directory containing \verb{parquet/} and the dataset indexes
 produced by \code{\link[=build_corpus_index]{build_corpus_index()}}. Index files are expected at
-\verb{<root_dir>/parquet/<dataset>_id_idx.parquet}.}
+\verb{<root_dir>/parquet/<dataset>_id_idx/}.}
 
 \item{ids}{Character vector of OpenAlex IDs to retrieve. Can be long form
 (e.g. \code{"https://openalex.org/W2741809807"}) or short form

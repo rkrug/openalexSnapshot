@@ -12,7 +12,15 @@
 
 #' Build one ID index in pure R
 #'
-#' Two stages: shard per batch of files (parallel, resumable), then combine.
+#' Two stages, mirroring [build_citation_index()]: Stage 1 extracts and
+#' range-partitions by `id_block` (parallel, resumable), Stage 2 sorts each
+#' block independently.
+#'
+#' The output is a hive **directory**, not a single file. A single file needed
+#' a global sort of 492M rows, and carried 3,992 row groups whose footer had to
+#' be parsed on every query -- 0.192 s before touching any data. Partitioning
+#' removes both: each block sorts in memory, and a lookup opens only the blocks
+#' its ids fall in, never parsing the other footers at all.
 #'
 #' @inheritParams build_corpus_index
 #' @param corpus_dir Single dataset Parquet directory.
@@ -22,7 +30,8 @@
                                  workers = NULL,
                                  memory_limit = NULL,
                                  temp_dir = NULL,
-                                 batch_bytes = 8e9,
+                                 batch_bytes = 1e9,
+                                 block_size = 1e7,
                                  overwrite = FALSE,
                                  verbose = TRUE) {
   if (!dir.exists(corpus_dir)) {
@@ -32,31 +41,33 @@
   corpus_dir  <- normalizePath(corpus_dir)
   parent_dir  <- dirname(corpus_dir)
   corpus_name <- basename(corpus_dir)
-  index_file  <- file.path(parent_dir, paste0(corpus_name, "_id_idx.parquet"))
+  index_dir   <- file.path(parent_dir, paste0(corpus_name, "_id_idx"))
+  block_size  <- as.integer(block_size)
 
-  if (file.exists(index_file)) {
-    if (!isTRUE(overwrite)) {
-      message("index_file exists - creation skipped",
-              " - delete manually or use overwrite = TRUE to re-create: ",
-              index_file)
-      return(invisible(index_file))
-    }
-    unlink(index_file)
+  complete <- file.exists(file.path(index_dir, "_index_meta.parquet"))
+  if (dir.exists(index_dir) && complete && !isTRUE(overwrite)) {
+    message("index exists - creation skipped",
+            " - delete manually or use overwrite = TRUE to re-create: ",
+            index_dir)
+    return(invisible(index_dir))
   }
+  if (isTRUE(overwrite)) unlink(index_dir, recursive = TRUE)
 
   files <- .oas_corpus_files(corpus_dir)
   if (is.null(temp_dir)) {
     temp_dir <- file.path(tempdir(), paste0(corpus_name, "_id_idx_tmp"))
   }
-  dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
-  file.create(file.path(temp_dir, ".metadata_never_index"))
+  shards_dir <- file.path(temp_dir, "shards")
+  done_dir   <- file.path(temp_dir, ".done")
+  dir.create(shards_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(done_dir,   recursive = TRUE, showWarnings = FALSE)
 
   batches <- .oas_plan_batches(files, batch_bytes = batch_bytes)
   total_start <- Sys.time()
 
   if (isTRUE(verbose)) {
     message("Building index from: ", corpus_dir)
-    message("    Writing to: ", index_file)
+    message("    Writing to: ", index_dir)
     message("Stage 1: ", length(files), " parquet files in ",
             length(batches), " batches",
             if (!is.null(workers) && workers > 1L) {
@@ -80,32 +91,39 @@
     {
       p <- progressr::progressor(along = batches)
       future.apply::future_lapply(seq_along(batches), function(i) {
-        out_file <- file.path(temp_dir, sprintf("idx_%05d.parquet", i))
-        if (file.exists(out_file)) {          # resume
+        tag    <- sprintf("b%05d", i)
+        marker <- file.path(done_dir, tag)
+        if (file.exists(marker)) {          # resume
           p()
           return(invisible(NULL))
         }
-        # Private spill directory per worker: concurrent DuckDB instances
-        # sharing one temp_directory corrupt each other's spill files.
+        partial <- list.files(shards_dir, pattern = paste0("^", tag, "_"),
+                              recursive = TRUE, full.names = TRUE)
+        if (length(partial)) unlink(partial)
+
         wcon <- .oas_con(memory_limit = memory_limit,
-                         temp_dir = file.path(temp_dir, "duckdb", sprintf("idx_%05d", i)),
-                         threads = wthreads)
+                         temp_dir = file.path(temp_dir, "duckdb", tag),
+                         threads = wthreads, preserve_order = FALSE)
         on.exit(DBI::dbDisconnect(wcon, shutdown = TRUE), add = TRUE)
+        DBI::dbExecute(wcon, "SET partitioned_write_max_open_files = 1024")
 
         q <- paste0(
           "COPY (SELECT ",
           "  w.id AS id, ",
-          "  CAST(FLOOR(CAST(regexp_extract(w.id, '(\\d+)$', 1) AS BIGINT) / 10000)",
-          "       AS INTEGER) AS id_block, ",
           "  replace(replace(w.filename, ", .oas_sql_str(root_prefix), ", ''),",
           "          '\\', '/') AS parquet_file, ",
-          "  w.file_row_number AS file_row_number ",
+          "  w.file_row_number AS file_row_number, ",
+          "  CAST(TRY_CAST(substr(w.id, position('/W' IN w.id) + 2) AS UBIGINT)",
+          "       // ", block_size, " AS INTEGER) AS id_block ",
           "FROM read_parquet(", .oas_sql_paths(batches[[i]]),
           ", filename = true, file_row_number = true, hive_partitioning = false) AS w",
-          ") TO ", .oas_sql_str(.oas_fwd(out_file)),
-          " (FORMAT PARQUET, COMPRESSION ZSTD)"
+          ") TO ", .oas_sql_str(.oas_fwd(shards_dir)),
+          " (FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (id_block)",
+          ", FILENAME_PATTERN ", .oas_sql_str(paste0(tag, "_{i}")),
+          ", OVERWRITE_OR_IGNORE, ROW_GROUP_SIZE 100000)"
         )
         DBI::dbExecute(wcon, q)
+        file.create(marker)
         p()
         invisible(NULL)
       }, future.seed = TRUE)
@@ -114,41 +132,73 @@
   )
 
   if (isTRUE(verbose)) message("    Stage 1 complete.")
-  if (isTRUE(verbose)) message("Stage 2: combining into ", index_file)
+  blocks <- grep("^id_block=", list.dirs(shards_dir, recursive = FALSE,
+                                         full.names = FALSE), value = TRUE)
+  if (length(blocks) == 0L) {
+    stop("No index rows were produced from: ", corpus_dir, call. = FALSE)
+  }
+  dir.create(index_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # Sorted by (id_block, id), with preserve_insertion_order = TRUE so the
-  # ORDER BY survives into the file.
-  #
-  # This is what makes lookup_by_id() a lookup rather than a scan. Unsorted,
-  # every call reads the whole index -- measured at 1.87 s per call on the real
-  # 7.29 GB works index, and a snowball makes four such calls. Sorting gives
-  # the row groups non-overlapping id_block ranges, so the min/max statistics
-  # in the footer let a query skip almost all of them.
-  #
-  # id_block leads the sort deliberately: it is an INTEGER, and a set predicate
-  # on it prunes reliably from statistics, whereas pruning on the id string is
-  # far less dependable across engines. This is the use the column was always
-  # documented for and never actually put to.
-  con <- .oas_con(memory_limit = memory_limit, temp_dir = temp_dir,
-                  threads = workers, preserve_order = TRUE)
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  if (isTRUE(verbose)) {
+    message("    Stage 1 complete.")
+    message("Stage 2: sorting ", length(blocks), " blocks ...")
+  }
 
-  DBI::dbExecute(con, paste0(
-    "COPY (SELECT * FROM read_parquet(",
-    .oas_sql_str(paste0(.oas_fwd(temp_dir), "/idx_*.parquet")),
-    ") ORDER BY id_block, id) TO ", .oas_sql_str(.oas_fwd(index_file)),
-    " (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 200000)"
+  n_rows <- progressr::with_progress(
+    {
+      p <- progressr::progressor(along = blocks)
+      unlist(future.apply::future_lapply(blocks, function(b) {
+        out_sub <- file.path(index_dir, b)
+        dir.create(out_sub, recursive = TRUE, showWarnings = FALSE)
+        out_file <- file.path(out_sub, "part-0.parquet")
+
+        # preserve_insertion_order = TRUE so the ORDER BY survives into the
+        # file; without it the row-group min/max on id are meaningless and
+        # lookups degrade to scans.
+        wcon <- .oas_con(memory_limit = memory_limit,
+                         temp_dir = file.path(temp_dir, "duckdb", b),
+                         threads = 1L, preserve_order = TRUE)
+        on.exit(DBI::dbDisconnect(wcon, shutdown = TRUE), add = TRUE)
+
+        src <- .oas_sql_str(paste0(.oas_fwd(file.path(shards_dir, b)), "/*.parquet"))
+        DBI::dbExecute(wcon, paste0(
+          "COPY (SELECT id, parquet_file, file_row_number FROM read_parquet(",
+          src, ", hive_partitioning = false) ORDER BY id) TO ",
+          .oas_sql_str(.oas_fwd(out_file)),
+          " (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 200000)"
+        ))
+        n <- DBI::dbGetQuery(wcon, paste0(
+          "SELECT count(*) AS n FROM read_parquet(",
+          .oas_sql_str(.oas_fwd(out_file)), ")"))$n[[1L]]
+        p()
+        n
+      }, future.seed = TRUE))
+    },
+    handlers = progressr::handler_cli()
+  )
+
+  # Written last: its presence marks the index complete, and it carries the
+  # block_size the query side must recompute with.
+  .oas_write_index_meta(index_dir, data.frame(
+    index_type = "id", corpus_dir = corpus_dir, block_size = block_size,
+    n_source_files = length(files),
+    n_rows = sum(n_rows), n_blocks = length(blocks),
+    built_at = Sys.time(),
+    builder_version = as.character(utils::packageVersion("openalexSnapshot")),
+    stringsAsFactors = FALSE
   ))
 
   unlink(temp_dir, recursive = TRUE)
 
   if (isTRUE(verbose)) {
-    message("Done! Index size: ",
-            round(file.info(index_file)$size / 1024^3, 3), " GB")
+    sz <- sum(file.info(list.files(index_dir, recursive = TRUE,
+                                   full.names = TRUE))$size, na.rm = TRUE)
+    message("Done! ", format(sum(n_rows), big.mark = ","), " rows in ",
+            length(blocks), " blocks, ", round(sz / 1024^3, 3), " GB")
     message("Total time: ",
             round(difftime(Sys.time(), total_start, units = "mins"), 2),
             " minutes")
   }
 
-  invisible(index_file)
+  invisible(index_dir)
 }

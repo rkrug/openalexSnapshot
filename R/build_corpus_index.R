@@ -1,6 +1,6 @@
 #' Build a Parquet ID-lookup index
 #'
-#' Builds a `<dataset>_id_idx.parquet` index from the Parquet corpus produced
+#' Builds a `<dataset>_id_idx/` index from the Parquet corpus produced
 #' by [snapshot_to_parquet()], enabling fast record retrieval by OpenAlex ID
 #' using [lookup_by_id()].
 #'
@@ -15,7 +15,7 @@
 #'
 #' @param root_dir Root directory containing a `parquet/` subdirectory produced
 #'   by [snapshot_to_parquet()]. If provided, the index for each dataset in
-#'   `data_sets` is created at `<root_dir>/parquet/<dataset>_id_idx.parquet`.
+#'   `data_sets` is created at `<root_dir>/parquet/<dataset>_id_idx/`.
 #' @param data_sets Character vector of dataset names to index (e.g.
 #'   `c("works", "authors")`). `NULL` indexes all datasets found under
 #'   `<root_dir>/parquet/`. Ignored when `corpus_dir` is provided.
@@ -32,12 +32,14 @@
 #'   or if the default lacks room: peak usage is roughly the size of the
 #'   finished index plus its transient shards.
 #' @param batch_bytes Approximate bytes of source parquet per Stage-1 batch.
+#' @param block_size Width of an `id_block`. Default `1e7` gives ~351
+#'   non-empty blocks over the full works corpus.
 #' @param overwrite If `TRUE`, rebuilds existing indexes. Default is `FALSE`
 #'   (skip if the index already exists).
 #' @param verbose Print progress messages. Default is `TRUE`.
 #' @param corpus_dir Explicit path to a single dataset Parquet directory (e.g.
 #'   `"/Volumes/openalex/parquet/works"`). The index is written as a sibling
-#'   file: `<parent>/<basename>_id_idx.parquet`. When this is provided,
+#'   directory: `<parent>/<basename>_id_idx/`. When this is provided,
 #'   `root_dir` and `data_sets` are ignored.
 #' @param backend Retained only so that existing calls passing
 #'   `backend = "rust"` get an explanatory error. The compiled backend was
@@ -55,35 +57,26 @@
 #' @return When `corpus_dir` is provided, invisibly returns the path to the
 #'   created index file. When `root_dir` is used, invisibly returns `root_dir`.
 #'
-#' @details The index contains columns:
-#' \describe{
-#'   \item{id}{The OpenAlex ID}
-#'   \item{id_block}{Block number computed as `floor(numeric_id / 10000)`}
-#'   \item{parquet_file}{Relative path to the Parquet file in the corpus}
-#'   \item{file_row_number}{Row number within the file (0-indexed)}
-#' }
+#' @details A hive-partitioned directory, not a single file:
 #'
-#' @seealso [snapshot_to_parquet()] for creating the Parquet corpus,
-#'   [lookup_by_id()] for ID-based record retrieval.
+#' ```
+#' works_id_idx/
+#'   _index_meta.parquet
+#'   id_block=0/part-0.parquet
+#'   ...
+#' ```
 #'
-#' @examples
-#' \dontrun{
-#' build_corpus_index(root_dir = "/Volumes/openalex")
+#' with `id_block = floor(numeric_id / block_size)`, each part sorted by `id`,
+#' holding `id` (long form), `parquet_file` (relative to the parquet root) and
+#' `file_row_number` (0-indexed).
 #'
-#' build_corpus_index(
-#'   root_dir  = "/Volumes/openalex",
-#'   data_sets = "works",
-#'   workers   = 4
-#' )
+#' A single file measured 3,992 row groups whose footer cost 0.192 s to parse
+#' before reading any data, on every query, and needed a global sort of 492M
+#' rows to build. Partitioning removes both: blocks sort independently, and a
+#' lookup opens only the blocks its ids fall in.
 #'
-#' # Single explicit directory:
-#' build_corpus_index(
-#'   corpus_dir   = "/Volumes/openalex/parquet/works",
-#'   memory_limit = "20GB"
-#' )
-#' }
-#'
-#' @export
+#' `_index_meta.parquet` is written last; its presence marks the index
+#' complete, and it records the `block_size` the query side must recompute.
 build_corpus_index <- function(
   root_dir     = NULL,
   data_sets    = NULL,
@@ -91,6 +84,7 @@ build_corpus_index <- function(
   memory_limit = NULL,
   temp_dir     = NULL,
   batch_bytes  = 1e9,
+  block_size   = 1e7,
   overwrite    = FALSE,
   verbose      = TRUE,
   corpus_dir   = NULL,
@@ -105,6 +99,7 @@ build_corpus_index <- function(
       memory_limit = memory_limit,
       temp_dir     = temp_dir,
       batch_bytes  = batch_bytes,
+      block_size   = block_size,
       overwrite    = isTRUE(overwrite),
       verbose      = isTRUE(verbose)
     )

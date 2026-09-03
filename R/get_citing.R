@@ -38,7 +38,7 @@
 #'   corpus. Set `Inf` to lift the guard deliberately.
 #' @param depth Reserved for multi-hop snowballing; only `1` is implemented.
 #' @param citation_index Explicit path to a `*_cite_idx` directory.
-#' @param id_index Explicit path to a `*_id_idx.parquet`.
+#' @param id_index Explicit path to a `*_id_idx` directory.
 #' @param doi_index Explicit path to a `*_doi_idx.parquet`.
 #' @param data_set Dataset name used to locate indexes under `root_dir`.
 #' @param workers Parallel workers for record extraction.
@@ -138,7 +138,7 @@ get_cited <- function(keypaper,
 
   if (is.null(id_index)) {
     id_index <- file.path(.oas_parquet_root(root_dir),
-                          paste0(data_set, "_id_idx.parquet"))
+                          paste0(data_set, "_id_idx"))
   }
 
   # Only two of ~51 columns are needed. This projection is the reason
@@ -287,7 +287,7 @@ get_cited <- function(keypaper,
   if (length(ids) == 0L) return(data.frame())
   if (is.null(id_index)) {
     id_index <- file.path(.oas_parquet_root(root_dir),
-                          paste0(data_set, "_id_idx.parquet"))
+                          paste0(data_set, "_id_idx"))
   }
   if (isTRUE(verbose)) {
     message("Extracting ", length(ids), " record(s) ...")

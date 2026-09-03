@@ -12,8 +12,8 @@
 #' pair.
 #'
 #' @section Layout:
-#' Unlike `<dataset>_id_idx.parquet` and `<dataset>_doi_idx.parquet`, which are
-#' single files, this index is a **hive-partitioned directory**:
+#' Like `<dataset>_id_idx/`, this index is a **hive-partitioned directory**
+#' (only `<dataset>_doi_idx.parquet` remains a single file):
 #'
 #' ```
 #' works_cite_idx/
@@ -85,8 +85,8 @@
 #'   \item{citing_id}{The citing work's OpenAlex ID, long form `VARCHAR`}
 #' }
 #' sorted by `(cited_id, citing_id)`, matching the long-form convention of
-#' `<dataset>_id_idx.parquet` and `<dataset>_doi_idx.parquet` so every index in
-#' the family stores IDs the same way. Note this costs real space at three
+#' `<dataset>_id_idx/` and `<dataset>_doi_idx.parquet` so every index in the
+#' family stores IDs the same way. Note this costs real space at three
 #' billion rows: `citing_id` is effectively random within a block and so does
 #' not dictionary-compress, unlike the sorted `cited_id`.
 #'
@@ -365,7 +365,7 @@ build_citation_index <- function(root_dir = NULL,
 #' @noRd
 .oas_stage1_sql <- function(files, refs_expr, block_size, shards_dir, tag, comp) {
   # IDs are stored as long-form strings for consistency with
-  # <dataset>_id_idx.parquet and <dataset>_doi_idx.parquet, which both use
+  # <dataset>_id_idx/ and <dataset>_doi_idx.parquet, which both use
   # 'https://openalex.org/W...'. The numeric form is still derived here, but
   # only to compute cited_block; it is not stored.
   paste0(

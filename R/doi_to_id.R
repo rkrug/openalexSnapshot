@@ -71,7 +71,7 @@ doi_to_id <- function(doi,
 #' Convenience wrapper: [doi_to_id()] followed by [lookup_by_id()].
 #'
 #' @inheritParams doi_to_id
-#' @param id_index Explicit path to a `*_id_idx.parquet`.
+#' @param id_index Explicit path to a `*_id_idx` directory.
 #' @param ... Passed to [lookup_by_id()], e.g. `columns` or `output`.
 #'
 #' @return Whatever [lookup_by_id()] returns.
@@ -95,7 +95,7 @@ lookup_by_doi <- function(doi,
 
   if (is.null(id_index)) {
     id_index <- file.path(.oas_parquet_root(root_dir),
-                          paste0(data_set, "_id_idx.parquet"))
+                          paste0(data_set, "_id_idx"))
   }
   lookup_by_id(ids = ids, index_file = id_index, backend = "r",
                verbose = verbose, ...)

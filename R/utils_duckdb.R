@@ -342,7 +342,7 @@
   call_hint <- sprintf("%s(%s = \"%s\")", builder, hint_arg,
                        if (is.null(hint_val)) "<snapshot>" else hint_val)
 
-  if (kind == "citation") {
+  if (kind %in% c("citation", "id")) {
     if (!dir.exists(path)) {
       rlang::abort(
         c(x = sprintf("No %s index at %s.", kind, path),

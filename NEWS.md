@@ -63,6 +63,29 @@ already carries.
   sorted index and supports `columns`/`add_columns`, neither of which the
   compiled path could do.
 
+## The ID index is now a partitioned directory
+
+* **`<dataset>_id_idx.parquet` becomes `<dataset>_id_idx/`**, hive-partitioned
+  by `id_block = floor(numeric_id / 1e7)` with each block sorted by `id` —
+  the same shape as `<dataset>_cite_idx/`. Over the full works corpus that is
+  351 non-empty blocks for 492,361,307 rows.
+
+  A single file cost on both sides. Reading: 3,992 row groups whose footer had
+  to be parsed on **every** query, measured at 0.192 s before touching any
+  data. Building: a global sort of 492 M rows. Partitioning removes both —
+  blocks sort independently in memory, and a lookup opens only the blocks its
+  ids fall in, never parsing the others' footers.
+
+* `lookup_by_id()` builds its partition file list in R from the ids rather than
+  globbing the index, for the same reason `get_citing()` does.
+
+* The `id_block` column at `floor(n / 1e4)` granularity is **gone** from the
+  index rows. It was documented from the start as the mechanism for avoiding a
+  full index scan, and nothing ever used it; at 1e4 it would have produced
+  714,000 partitions, which is unusable. The partition key reuses the name at
+  the `1e7` granularity that works, and `block_size` is recorded in
+  `_index_meta.parquet` for the query side to recompute with.
+
 ## Indexes are written sorted
 
 * **`build_corpus_index()` now sorts `<dataset>_id_idx.parquet` by

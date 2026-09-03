@@ -9,7 +9,7 @@ snapshot. It handles the large-scale, offline data pipeline:
 
 1. **`snapshot_to_parquet()`** — converts `.json.gz` snapshot files to Parquet (schema inference
    + parallel conversion)
-2. **`build_corpus_index()`** — builds `<dataset>_id_idx.parquet` ID-lookup indexes over the
+2. **`build_corpus_index()`** — builds `<dataset>_id_idx/` ID-lookup indexes over the
    Parquet corpus
 3. **`lookup_by_id()`** — extracts records by OpenAlex ID using the index
 
@@ -68,12 +68,15 @@ devtools::check()         # Full R CMD CHECK
 - OpenAlex IDs accepted in both short form (`W2741809807`) and long form
   (`https://openalex.org/W2741809807`)
 - Index files live alongside the dataset Parquet directory. Two shapes:
-  - `<dataset>_id_idx.parquet`, `<dataset>_doi_idx.parquet` — single sorted **files**
-  - `<dataset>_cite_idx/` — a hive **directory** partitioned by `cited_block`. It is a
-    directory because a 3-billion-row single file cannot be built without a global sort and
-    its footer alone would cost tens of MB to parse on every query
+  - `<dataset>_doi_idx.parquet` — a single sorted **file**
+  - `<dataset>_id_idx/` and `<dataset>_cite_idx/` — hive **directories**, partitioned
+    by `id_block` / `cited_block` at `block_size = 1e7`. Directories because a
+    single file needs a global sort to build and carries a footer that must be
+    parsed on every query: the old one-file id index had 3,992 row groups and
+    cost 0.192 s to open before reading any data. Blocks sort independently, and
+    a lookup opens only the blocks its ids fall in.
 - Indexes are written **sorted**, and this is load-bearing rather than tidy:
-  `<dataset>_id_idx.parquet` by `(id_block, id)`, `<dataset>_doi_idx.parquet`
+  `<dataset>_id_idx/` per block by `id`, `<dataset>_doi_idx.parquet`
   by `doi`, each `cite_idx` partition by `(cited_id, citing_id)`. Sorting is
   what lets a lookup prune row groups from footer statistics instead of
   scanning the file -- unsorted, the 7.29 GB works index cost 1.87 s per call.

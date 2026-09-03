@@ -9,7 +9,7 @@
 #'
 #' @param root_dir Root directory containing `parquet/` and the dataset indexes
 #'   produced by [build_corpus_index()]. Index files are expected at
-#'   `<root_dir>/parquet/<dataset>_id_idx.parquet`.
+#'   `<root_dir>/parquet/<dataset>_id_idx/`.
 #' @param ids Character vector of OpenAlex IDs to retrieve. Can be long form
 #'   (e.g. `"https://openalex.org/W2741809807"`) or short form
 #'   (e.g. `"W2741809807"`).
@@ -164,7 +164,7 @@ lookup_by_id <- function(
   }
 
   for (ds in data_sets) {
-    idx_path <- file.path(parquet_root, paste0(ds, "_id_idx.parquet"))
+    idx_path <- file.path(parquet_root, paste0(ds, "_id_idx"))
     if (!file.exists(idx_path)) {
       if (isTRUE(verbose)) message("No index for dataset '", ds, "', skipping.")
       next

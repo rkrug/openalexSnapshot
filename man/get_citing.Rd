@@ -79,7 +79,7 @@ corpus. Set \code{Inf} to lift the guard deliberately.}
 
 \item{citation_index}{Explicit path to a \verb{*_cite_idx} directory.}
 
-\item{id_index}{Explicit path to a \verb{*_id_idx.parquet}.}
+\item{id_index}{Explicit path to a \verb{*_id_idx} directory.}
 
 \item{doi_index}{Explicit path to a \verb{*_doi_idx.parquet}.}
 

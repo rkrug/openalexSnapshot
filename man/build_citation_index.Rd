@@ -97,15 +97,15 @@ Each part file holds:
 \item{citing_id}{The citing work's OpenAlex ID, long form \code{VARCHAR}}
 }
 sorted by \verb{(cited_id, citing_id)}, matching the long-form convention of
-\verb{<dataset>_id_idx.parquet} and \verb{<dataset>_doi_idx.parquet} so every index in
-the family stores IDs the same way. Note this costs real space at three
+\verb{<dataset>_id_idx/} and \verb{<dataset>_doi_idx.parquet} so every index in the
+family stores IDs the same way. Note this costs real space at three
 billion rows: \code{citing_id} is effectively random within a block and so does
 not dictionary-compress, unlike the sorted \code{cited_id}.
 }
 \section{Layout}{
 
-Unlike \verb{<dataset>_id_idx.parquet} and \verb{<dataset>_doi_idx.parquet}, which are
-single files, this index is a \strong{hive-partitioned directory}:
+Like \verb{<dataset>_id_idx/}, this index is a \strong{hive-partitioned directory}
+(only \verb{<dataset>_doi_idx.parquet} remains a single file):
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{works_cite_idx/
   _index_meta.parquet
