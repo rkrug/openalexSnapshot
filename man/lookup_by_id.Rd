@@ -14,13 +14,16 @@ lookup_by_id(
   verbose = TRUE,
   index_file = NULL,
   selected = NULL,
-  output = NULL
+  output = NULL,
+  backend = c("auto", "r", "rust"),
+  columns = NULL,
+  add_columns = NULL
 )
 }
 \arguments{
 \item{root_dir}{Root directory containing \verb{parquet/} and the dataset indexes
 produced by \code{\link[=build_corpus_index]{build_corpus_index()}}. Index files are expected at
-\verb{<root_dir>/parquet/<dataset>_id_idx.parquet}.}
+\verb{<root_dir>/parquet/<dataset>_id_idx/}.}
 
 \item{ids}{Character vector of OpenAlex IDs to retrieve. Can be long form
 (e.g. \code{"https://openalex.org/W2741809807"}) or short form
@@ -52,6 +55,29 @@ is \code{NULL} (all columns).}
 files when using \code{index_file} mode. If \code{NULL} (default), results are
 returned as a data frame. Ignored when \code{root_dir} is used (use
 \code{project_dir} instead).}
+
+\item{backend}{Retained only so that existing calls passing
+\code{backend = "rust"} get an explanatory error. The compiled backend was
+removed in 0.1.0; the package is pure R. \code{"auto"} (the default) and
+\code{"r"} both use the pure-R/DuckDB implementation. \code{"rust"} uses the
+compiled library and is \strong{deprecated}: it writes an unsorted index and
+supports neither \code{columns} nor \code{add_columns}. It will be removed in a
+future release. \code{snapshot_to_parquet()} is unaffected and remains
+Rust-only. \code{"auto"} (the default) uses the
+compiled Rust library when it is loaded and the pure-R/DuckDB
+implementation otherwise. \code{"r"} forces pure R and is always available.
+\code{"rust"} forces the compiled path and errors if it is not loaded.}
+
+\item{columns}{Character vector of columns to return. \code{NULL} (default)
+returns all. Projection matters: reading 2 of 51 columns from a corpus of
+nested structs is far cheaper than \verb{SELECT *}. Requires
+\code{backend = "r"} — the compiled path always reads every column.}
+
+\item{add_columns}{Named list of constant columns to add to every returned
+row, e.g. \code{list(relation = "citing")}. Values are embedded as \strong{SQL string
+literals}, matching \code{openalexPro::pro_request_parquet()}, so a logical
+must be passed as \code{"TRUE"} and cast by the caller. Requires
+\code{backend = "r"}.}
 }
 \value{
 \itemize{

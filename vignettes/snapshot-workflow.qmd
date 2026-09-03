@@ -61,7 +61,6 @@ The snapshot download is approximately 1.2 TB. The Parquet conversion adds anoth
 
 ### Installing openalexSnapshot
 
-The easiest way to install `openalexSnapshot` is via r-universe, which provides precompiled binaries for macOS and Linux — no Rust toolchain required:
 
 ```{r}
 install.packages(
@@ -167,7 +166,6 @@ The JSON snapshot is not efficient for analytical queries. Converting to Parquet
 ```{r}
 library(openalexSnapshot)
 
-snapshot_to_parquet(
   root_dir      = "/Volumes/external-drive/openalex",
   workers       = 4,
   profile       = "balanced",   # "safe" | "balanced" | "fast"
@@ -291,7 +289,6 @@ mv /Volumes/external-drive/openalex/parquet \
    /Volumes/external-drive/openalex/parquet-$(date +%Y-%m-%d)
 ```
 
-Then re-run `snapshot_to_parquet()` and `build_corpus_index()` in R (steps 3–4 above).
 
 # Troubleshooting
 
@@ -308,7 +305,6 @@ Then re-run `snapshot_to_parquet()` and `build_corpus_index()` in R (steps 3–4
 **Out of memory**: Reduce memory usage:
 
 ```{r}
-snapshot_to_parquet(
   root_dir     = "/Volumes/external-drive/openalex",
   workers      = 1,
   profile      = "safe",
@@ -316,7 +312,6 @@ snapshot_to_parquet(
 )
 ```
 
-**Resuming a partial conversion**: `snapshot_to_parquet()` skips already-converted files, so you can safely re-run after an interruption.
 
 # Additional Resources
 

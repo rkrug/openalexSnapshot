@@ -9,7 +9,7 @@ snapshot. It handles the large-scale, offline data pipeline:
 
 1. **`snapshot_to_parquet()`** — converts `.json.gz` snapshot files to Parquet (schema inference
    + parallel conversion)
-2. **`build_corpus_index()`** — builds `<dataset>_id_idx.parquet` ID-lookup indexes over the
+2. **`build_corpus_index()`** — builds `<dataset>_id_idx/` ID-lookup indexes over the
    Parquet corpus
 3. **`lookup_by_id()`** — extracts records by OpenAlex ID using the index
 
@@ -18,76 +18,33 @@ an informative error pointing users here.
 
 ## Architecture
 
-### Design decision: Rust-only, no pure-R fallback
+### Design decision: pure R
 
-`openalexSnapshot` is **Rust-only**. There is no pure-R/DuckDB fallback and none is planned.
+`openalexSnapshot` is **pure R** over DuckDB and arrow. There is no compiled
+code, and no Rust toolchain is needed to install it.
 
-**Rationale:** Maintaining two implementations (Rust + R) in parallel doubles the maintenance
-burden and invites subtle divergence. The historical motivation for pure-R fallbacks was Rust
-toolchain installation friction at the user's machine — that problem is solved at the distribution
-layer instead:
+It was previously a thin R layer over a compiled `openalex-core` crate. That
+was removed once measurement showed it bought nothing on this workload: Part 4
+of `../compatibility_report.md` found `index` and `extract` are parquet decode
+and write rather than computation -- a single DuckDB thread already saturates,
+so throughput was identical at 1 thread and at 8 -- putting the expected Rust
+advantage at ~1.0-1.5x, and less on an external volume where cold I/O dominates
+and is language-neutral.
 
-- **r-universe** (or GitHub Actions) pre-compiles binaries for macOS (arm64 + x86_64), Linux
-  (x86_64), and Windows before each release.
-- Users install with `pak::pak("rkrug/openalexSnapshot")` and receive a pre-built binary — no
-  Cargo required.
-- Only package developers and CI need Rust installed.
+Two things then made R the *better* implementation rather than merely the
+adequate one:
 
-The pure-R `_R` variants from openalexPro are available in git history if ever needed as
-reference:
-```
-git -C ~/GitHub/openalexPro show 70539a0:R/snapshot_to_parquet.R
-git -C ~/GitHub/openalexPro show 70539a0:R/build_corpus_index.R
-git -C ~/GitHub/openalexPro show 70539a0:R/lookup_by_id.R
-```
+* it writes a **sorted** index, which is what lets `lookup_by_id()` prune row
+  groups instead of scanning a multi-GB file (measured: 1.87 s per call against
+  an unsorted 7.29 GB works index);
+* it supports `columns` (projection) and `add_columns`, neither of which the
+  compiled path could do -- it always did `SELECT *`.
 
-### Current state (stubs)
+`snapshot_to_parquet()` was removed outright: OpenAlex now publishes the
+snapshot natively in parquet, so JSON conversion is a dead path.
 
-All three functions currently raise "not yet implemented" errors. They have the correct argument
-signatures (preserved from openalexPro). The Rust back-end still needs to be wired up via
-extendr.
-
-### Rust back-end (openalex-core)
-
-`~/GitHub/openalex-snapshot/openalex-core/` is already a **library crate** in the workspace,
-explicitly designed to be called from R. Its `conversion` feature exposes exactly the three
-functions this package needs:
-
-```
-openalex-core/src/conversion.rs
-  pub fn snapshot_to_parquet(...)   line 258
-  pub fn build_corpus_index(...)    line 786
-  pub fn lookup_by_id(...)          line 991
-  pub fn infer_api_list_type(...)   line 610  (used by openalexPro's pro_request_parquet)
-```
-
-`openalex-core/src/lib.rs` also re-exports `works_abstract_expr()` and `works_citation_expr()`
-(the SQL helpers now duplicated in `openalexPro/R/sql_helpers.R`).
-
-**Steps to wire up the extendr bridge:**
-
-1. `rextendr::use_extendr()` — adds `src/rust/` scaffolding to this R package.
-2. Write `src/rust/src/lib.rs`: a thin crate that depends on `openalex-core` with
-   `features = ["conversion"]` and wraps the pub functions with `#[extendr]`.
-3. In `src/rust/Cargo.toml`, point to openalex-core via a path or git dependency:
-   ```toml
-   [dependencies]
-   openalex-core = { path = "../../../../openalex-snapshot/openalex-core", features = ["conversion"] }
-   extendr-api = "*"
-   ```
-4. The `configure` / `configure.win` scripts from the old openalexPro extendr bridge are
-   recoverable from git history:
-   ```
-   git -C ~/GitHub/openalexPro show c86725f:configure
-   git -C ~/GitHub/openalexPro show c86725f:configure.win
-   ```
-5. Set up GitHub Actions cross-compilation and r-universe publishing.
-
-**Important:** `openalex-core` lives in a Cargo workspace. When building as a dependency from
-this R package's `src/rust/` crate, the workspace root must be discoverable or the dependency
-must be referenced via a published crate on crates.io / git URL (not a relative path that
-crosses the workspace boundary). The cleanest solution is to publish `openalex-core` to
-crates.io, or reference it via a git URL with `tag = "vX.Y.Z"`.
+`backend` survives only as an argument that raises an explanatory error on
+`"rust"`, so existing calls fail with a reason rather than "unused argument".
 
 ## Common Commands
 
@@ -100,8 +57,9 @@ devtools::check()         # Full R CMD CHECK
 
 ## Branching
 
-- Work on `claude/<description>` branches from `main` (single-branch repo for now)
-- `main` receives release commits
+- Work on `claude/<description>` branches from **`dev`**; merge back into `dev`
+- `main` receives release commits; never commit to it directly
+- `main` and `dev` are long-lived; do not delete `dev` after a PR merge
 
 ## Key Conventions
 
@@ -109,4 +67,36 @@ devtools::check()         # Full R CMD CHECK
   `project_dir` convention for API work)
 - OpenAlex IDs accepted in both short form (`W2741809807`) and long form
   (`https://openalex.org/W2741809807`)
-- Index files are named `<dataset>_id_idx.parquet` and live alongside the dataset Parquet directory
+- Index files live alongside the dataset Parquet directory. Two shapes:
+  - `<dataset>_doi_idx.parquet` — a single sorted **file**
+  - `<dataset>_id_idx/` and `<dataset>_cite_idx/` — hive **directories**, partitioned
+    by `id_block` / `cited_block` at `block_size = 1e7`. Directories because a
+    single file needs a global sort to build and carries a footer that must be
+    parsed on every query: the old one-file id index had 3,992 row groups and
+    cost 0.192 s to open before reading any data. Blocks sort independently, and
+    a lookup opens only the blocks its ids fall in.
+- Indexes are written **sorted**, and this is load-bearing rather than tidy:
+  `<dataset>_id_idx/` per block by `id`, `<dataset>_doi_idx.parquet`
+  by `doi`, each `cite_idx` partition by `(cited_id, citing_id)`. Sorting is
+  what lets a lookup prune row groups from footer statistics instead of
+  scanning the file -- unsorted, the 7.29 GB works index cost 1.87 s per call.
+  Every such write needs `preserve_insertion_order = TRUE`, or the parallel
+  writer may reorder row groups and the ordering is silently lost.
+- `cited_block = floor(numeric_id / 1e7)` (i.e. `id_block(x) %/% 1000L`) — ~351 partitions.
+  Plain `id_block()`'s `floor(n/1e4)` would give 714k partitions and is unusable as a
+  partition key. `block_size` is recorded in `_index_meta.parquet` and must be **read from
+  there**, never assumed
+- `_index_meta.parquet` is written **last** by an index builder; its presence is the
+  "this index is complete" signal
+- `add_columns` values are embedded as **single-quoted SQL string literals**, matching
+  `openalexPro::pro_request_parquet()`. That is why `oa_input` round-trips as VARCHAR and is
+  cast to BOOLEAN at node-assembly time — it lets openalexSnowball share one assembly step
+  across the API and snapshot paths
+- DOI keys are normalised with the internal `.oas_normalize_doi()` (strip resolver, lowercase,
+  trim), **not** `openalexPro::extract_doi()`. The latter is an extractor, not a normaliser: it
+  returns a substring of a wrong input rather than failing. openalexSnapshot also takes no
+  openalexPro dependency, deliberately — it is the offline half of the ecosystem and must not
+  pull in httr2/curl/jqr
+- `referenced_works` is `VARCHAR[]` in the official parquet but a JSON `VARCHAR` in the legacy
+  converted corpus. Sniff the type in R (a SQL `CASE WHEN typeof(...)` will not bind) and use
+  `json_extract_string(x, '$[*]')` for the JSON form
