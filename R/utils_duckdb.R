@@ -323,29 +323,26 @@
 
 # -- backend selection ------------------------------------------------------
 
-#' Is the compiled Rust library available?
-#' @noRd
-.oas_rust_available <- function() {
-  is.loaded("wrap__oa_lookup_by_id", PACKAGE = "openalexSnapshot")
-}
-
-#' Resolve the `backend` argument to "r" or "rust"
+#' Resolve the `backend` argument
 #'
-#' `"auto"` prefers the compiled path when it is loaded, so existing behaviour
-#' is unchanged for users with a built package.
+#' The compiled Rust backend was removed in 0.1.0. The argument is retained so
+#' that existing calls passing `backend = "rust"` get an explanatory error
+#' rather than an opaque "unused argument", and so `backend = "r"` keeps
+#' working unchanged.
 #' @noRd
 .oas_backend <- function(backend = c("auto", "r", "rust")) {
   backend <- match.arg(backend)
-  if (backend == "auto") {
-    return(if (.oas_rust_available()) "rust" else "r")
-  }
-  if (backend == "rust" && !.oas_rust_available()) {
+  if (backend == "rust") {
     stop(
-      "backend = \"rust\" was requested but the compiled library is not loaded. ",
-      "Install openalexSnapshot from a binary or with a Rust toolchain, ",
-      "or use backend = \"r\".",
+      "backend = \"rust\" was removed in openalexSnapshot 0.1.0.\n",
+      "The package is now pure R: there is no compiled code and no Rust ",
+      "toolchain is required to install it. The R implementation is also the ",
+      "better one -- it writes a sorted index, which lets lookup_by_id() prune ",
+      "row groups instead of scanning the whole file, and it supports ",
+      "`columns` and `add_columns`.\n",
+      "Drop the argument, or pass backend = \"r\".",
       call. = FALSE
     )
   }
-  backend
+  "r"
 }

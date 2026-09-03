@@ -9,16 +9,13 @@ Description: Provides tools for working with the OpenAlex bulk snapshot:
     records by OpenAlex ID or DOI. Also provides an offline view of the
     citation graph, so the works citing or cited by a given paper can be
     retrieved without network access. Indexing and extraction are implemented
-    in R over DuckDB; snapshot conversion delegates to a compiled Rust
-    back-end (openalex-core via extendr).
+    in R over DuckDB. The package is pure R: no compiled code, and no Rust
+    toolchain is needed to install it.
 License: GPL (>= 2)
 URL: https://github.com/openalexPro/openalexSnapshot, https://openalexpro.github.io/openalexSnapshot/, https://doi.org/10.5281/zenodo.20448992
 BugReports: https://github.com/openalexPro/openalexSnapshot/issues
 Additional_repositories: https://openalexpro.r-universe.dev
-SystemRequirements: Cargo (Rust's package manager) and rustc >= 1.65.0, required
-    only for snapshot_to_parquet(); all other functionality is pure R.
 Encoding: UTF-8
-Config/rextendr/version: 0.3.1
 Depends:
     R (>= 4.1.0)
 Imports:

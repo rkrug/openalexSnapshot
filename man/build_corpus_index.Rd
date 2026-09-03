@@ -39,7 +39,14 @@ by \code{\link[=snapshot_to_parquet]{snapshot_to_parquet()}}. If provided, the i
 file: \verb{<parent>/<basename>_id_idx.parquet}. When this is provided,
 \code{root_dir} and \code{data_sets} are ignored.}
 
-\item{backend}{Which implementation to use. \code{"auto"} (the default) uses the
+\item{backend}{Retained only so that existing calls passing
+\code{backend = "rust"} get an explanatory error. The compiled backend was
+removed in 0.1.0; the package is pure R. \code{"auto"} (the default) and
+\code{"r"} both use the pure-R/DuckDB implementation. \code{"rust"} uses the
+compiled library and is \strong{deprecated}: it writes an unsorted index and
+supports neither \code{columns} nor \code{add_columns}. It will be removed in a
+future release. \code{snapshot_to_parquet()} is unaffected and remains
+Rust-only. \code{"auto"} (the default) uses the
 compiled Rust library when it is loaded and the pure-R/DuckDB
 implementation otherwise, so behaviour is unchanged for an installed
 binary. \code{"r"} forces pure R and is always available. \code{"rust"} forces the

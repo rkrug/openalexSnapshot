@@ -19,6 +19,11 @@ test_that("build_citation_index() produces the documented layout and schema", {
                full.names = TRUE)
   ))
   expect_setequal(names(edges), c("cited_id", "citing_id"))
+  # long-form strings, matching works_id_idx.parquet and works_doi_idx.parquet
+  expect_type(edges$cited_id, "character")
+  expect_type(edges$citing_id, "character")
+  expect_true(all(grepl("^https://openalex\\.org/W", edges$cited_id)))
+  expect_true(all(grepl("^https://openalex\\.org/W", edges$citing_id)))
 })
 
 test_that("the edge set is exactly the unnested referenced_works", {
@@ -165,4 +170,32 @@ test_that("indexing a dataset without referenced_works fails clearly", {
                          verbose = FALSE),
     "referenced_works"
   )
+})
+
+
+test_that("a parallel multi-batch build matches a sequential one", {
+  # Regression: every worker must get its OWN DuckDB spill directory. Sharing
+  # one temp_directory across concurrent DuckDB instances makes them write
+  # colliding duckdb_temp_storage_*.tmp files, which fails mid-build with
+  # "Could not read enough bytes from file". Only reproducible with >1 worker
+  # AND >1 batch, hence batch_bytes = 1.
+  skip_on_cran()
+  tmp <- withr::local_tempdir()
+  corpus <- make_tiny_corpus(tmp)
+
+  seq_idx <- build_citation_index(corpus_dir = corpus, verbose = FALSE)
+  seq_edges <- dplyr::collect(arrow::open_dataset(
+    list.files(seq_idx, pattern = "part-0\\.parquet$", recursive = TRUE,
+               full.names = TRUE)))
+  unlink(seq_idx, recursive = TRUE)
+
+  par_idx <- build_citation_index(corpus_dir = corpus, workers = 4,
+                                  batch_bytes = 1, verbose = FALSE)
+  par_edges <- dplyr::collect(arrow::open_dataset(
+    list.files(par_idx, pattern = "part-0\\.parquet$", recursive = TRUE,
+               full.names = TRUE)))
+
+  expect_equal(nrow(seq_edges), nrow(par_edges))
+  expect_setequal(paste(seq_edges$cited_id, seq_edges$citing_id),
+                  paste(par_edges$cited_id, par_edges$citing_id))
 })

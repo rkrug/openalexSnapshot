@@ -135,6 +135,11 @@ build_doi_index <- function(root_dir = NULL,
             " batches ...")
   }
 
+  # One DuckDB thread per worker when running in parallel -- the processes
+  # already saturate the machine. Running sequentially, let DuckDB use all
+  # cores rather than idling them.
+  wthreads <- if (!is.null(workers) && workers > 1L) 1L else NULL
+
   if (!is.null(workers) && workers > 1L) {
     old_plan <- future::plan(future::multisession, workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
@@ -151,7 +156,11 @@ build_doi_index <- function(root_dir = NULL,
           p()
           return(invisible(NULL))
         }
-        wcon <- .oas_con(memory_limit = memory_limit, threads = 1L)
+        # Private spill directory per worker: concurrent DuckDB instances
+        # sharing one temp_directory corrupt each other's spill files.
+        wcon <- .oas_con(memory_limit = memory_limit,
+                         temp_dir = file.path(temp_dir, "duckdb", sprintf("doi_%05d", i)),
+                         threads = wthreads)
         on.exit(DBI::dbDisconnect(wcon, shutdown = TRUE), add = TRUE)
 
         # This normalisation must agree exactly with .oas_normalize_doi();

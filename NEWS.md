@@ -40,6 +40,50 @@ already carries.
   An index that looks out of step with the corpus **warns rather than errors** --
   a deliberately frozen snapshot must stay usable.
 
+## The package is now pure R
+
+* **All compiled code is removed.** No `src/`, no `configure`, no
+  `SystemRequirements`, no Rust toolchain to install the package. The
+  `openalex-core` git dependency -- pinned at `v0.5.0`, a major version behind
+  -- is gone with it.
+
+* **`snapshot_to_parquet()` is removed.** OpenAlex publishes the snapshot
+  natively in parquet, so converting from JSON is a dead path. It was also the
+  only function with no R implementation.
+
+* **`oa_snapshot_to_parquet()`, `oa_build_corpus_index()` and
+  `oa_lookup_by_id()` are removed** -- the direct wrappers around the compiled
+  functions.
+
+* **`backend = "rust"` now raises an explanatory error** rather than being
+  silently ignored, so existing calls say why. `backend = "auto"` and `"r"`
+  both use the R implementation, which is what they already did in practice.
+
+  The R implementation is not a fallback; it is the better one. It writes a
+  sorted index and supports `columns`/`add_columns`, neither of which the
+  compiled path could do.
+
+## Indexes are written sorted
+
+* **`build_corpus_index()` now sorts `<dataset>_id_idx.parquet` by
+  `(id_block, id)`**, and `lookup_by_id()` filters on `id_block` before `id`.
+  Previously the index was unsorted, so every lookup scanned the whole file --
+  1.87 s per call on the real 7.29 GB works index, four calls per snowball.
+  The `id_block` column existed and was documented for precisely this purpose
+  but nothing ever used it.
+
+  Existing indexes are not sorted; rebuild with `overwrite = TRUE` to benefit.
+  An unsorted index still returns correct results, just slowly.
+
+* **`backend = "auto"` resolves to `"r"`, and `backend = "rust"` is
+  deprecated** (warning once per session, removal in a future release). The R
+  builder writes a sorted index and supports `columns`/`add_columns`; the Rust
+  builder does neither, so preferring it whenever the compiled library happened
+  to be loaded silently produced a worse index.
+
+  `snapshot_to_parquet()` is unaffected and remains Rust-only -- there is no R
+  implementation of it to fall back to.
+
 ## Design change: pure R by default, Rust as an optional accelerator
 
 * **The "Rust-only, no pure-R fallback" decision recorded in 0.0.0.9000 is

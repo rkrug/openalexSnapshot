@@ -36,9 +36,15 @@
   ids <- .oas_normalize_id(ids)
   if (isTRUE(verbose)) message("Looking up ", length(ids), " ids ...")
 
+  # Filter on id_block first. On an index built by build_corpus_index(), rows
+  # are sorted by (id_block, id), so this set predicate prunes almost every row
+  # group using the footer statistics instead of scanning the file. On an
+  # unsorted index -- one built by the Rust backend, or before this change --
+  # it is merely redundant, never wrong.
+  blocks <- unique(.oas_id_block(ids))
   matches <- index_file |>
     arrow::open_dataset() |>
-    dplyr::filter(.data$id %in% ids) |>
+    dplyr::filter(.data$id_block %in% blocks, .data$id %in% ids) |>
     dplyr::collect()
 
   if (is.null(matches) || nrow(matches) == 0L) {

@@ -29,7 +29,14 @@
 #'   `"/Volumes/openalex/parquet/works"`). The index is written as a sibling
 #'   file: `<parent>/<basename>_id_idx.parquet`. When this is provided,
 #'   `root_dir` and `data_sets` are ignored.
-#' @param backend Which implementation to use. `"auto"` (the default) uses the
+#' @param backend Retained only so that existing calls passing
+#'   `backend = "rust"` get an explanatory error. The compiled backend was
+#'   removed in 0.1.0; the package is pure R. `"auto"` (the default) and
+#'   `"r"` both use the pure-R/DuckDB implementation. `"rust"` uses the
+#'   compiled library and is **deprecated**: it writes an unsorted index and
+#'   supports neither `columns` nor `add_columns`. It will be removed in a
+#'   future release. `snapshot_to_parquet()` is unaffected and remains
+#'   Rust-only. `"auto"` (the default) uses the
 #'   compiled Rust library when it is loaded and the pure-R/DuckDB
 #'   implementation otherwise, so behaviour is unchanged for an installed
 #'   binary. `"r"` forces pure R and is always available. `"rust"` forces the
@@ -78,27 +85,15 @@ build_corpus_index <- function(
   backend      = c("auto", "r", "rust")
 ) {
   backend          <- .oas_backend(backend)
-  workers_int      <- as.integer(if (is.null(workers)) 1L else workers)
-  memory_limit_str <- if (is.null(memory_limit)) "" else as.character(memory_limit)
 
   build_one <- function(dir) {
-    if (backend == "rust") {
-      oa_build_corpus_index(
-        corpus_dir   = dir,
-        workers      = workers_int,
-        memory_limit = memory_limit_str,
-        overwrite    = isTRUE(overwrite),
-        verbose      = isTRUE(verbose)
-      )
-    } else {
-      .oas_build_one_index(
-        corpus_dir   = dir,
-        workers      = workers,
-        memory_limit = memory_limit,
-        overwrite    = isTRUE(overwrite),
-        verbose      = isTRUE(verbose)
-      )
-    }
+    .oas_build_one_index(
+      corpus_dir   = dir,
+      workers      = workers,
+      memory_limit = memory_limit,
+      overwrite    = isTRUE(overwrite),
+      verbose      = isTRUE(verbose)
+    )
   }
 
   # corpus_dir mode: index a single explicit directory -------------------------

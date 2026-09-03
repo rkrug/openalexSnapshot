@@ -158,17 +158,44 @@ test_that("a missing index raises a typed condition naming its builder", {
   )
 })
 
-test_that("columns and add_columns are refused on the rust backend", {
-  skip_if_not(.oas_rust_available(), "compiled library not loaded")
-  expect_error(
-    lookup_by_id(ids = "W1", index_file = "x", backend = "rust",
-                 columns = "id"),
-    'require backend = "r"'
-  )
+test_that("the id index is written sorted by (id_block, id)", {
+  # Not cosmetic: this is the whole basis of lookup_by_id() pruning row groups
+  # instead of scanning a multi-GB file.
+  tmp <- withr::local_tempdir()
+  corpus <- make_tiny_corpus(tmp)
+  idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
+
+  got <- as.data.frame(arrow::read_parquet(idx))
+  expect_false(is.unsorted(got$id_block))
+  by_block <- split(got$id, got$id_block)
+  expect_true(all(vapply(by_block, function(x) !is.unsorted(x), logical(1))))
 })
 
-test_that("backend = 'auto' resolves to rust when loaded, r otherwise", {
-  expect_equal(.oas_backend("auto"),
-               if (.oas_rust_available()) "rust" else "r")
+test_that("lookup_by_id() filters on id_block as well as id", {
+  tmp <- withr::local_tempdir()
+  corpus <- make_tiny_corpus(tmp)
+  idx <- build_corpus_index(corpus_dir = corpus, backend = "r", verbose = FALSE)
+
+  # ids drawn from several different blocks must all still resolve
+  ids <- tiny_ids()[c(1, 5, 9, 12)]
+  got <- lookup_by_id(ids = ids, index_file = idx, backend = "r",
+                      columns = "id", verbose = FALSE)
+  expect_setequal(got$id, .oas_normalize_id(ids))
+})
+
+
+
+test_that("backend resolves to r, and the removed rust backend errors clearly", {
+  expect_equal(.oas_backend("auto"), "r")
   expect_equal(.oas_backend("r"), "r")
+  # An explanatory error, not an opaque "unused argument": existing code may
+  # still pass backend = "rust".
+  expect_error(.oas_backend("rust"), "removed in openalexSnapshot 0.1.0")
+  expect_error(build_corpus_index(corpus_dir = ".", backend = "rust"),
+               "removed in openalexSnapshot")
+})
+
+test_that("the package ships no compiled code", {
+  expect_false(dir.exists(system.file("libs", package = "openalexSnapshot")) &&
+                 length(list.files(system.file("libs", package = "openalexSnapshot"))) > 0)
 })

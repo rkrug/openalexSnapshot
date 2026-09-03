@@ -9,9 +9,10 @@ build_citation_index(
   data_sets = "works",
   workers = NULL,
   memory_limit = NULL,
+  retry_memory_limit = "12GB",
   temp_dir = NULL,
   block_size = 1e+07,
-  batch_bytes = 8e+09,
+  batch_bytes = 1e+09,
   compression = "zstd",
   overwrite = FALSE,
   verbose = TRUE,
@@ -29,6 +30,13 @@ the default is \code{"works"}.}
 
 \item{memory_limit}{DuckDB memory limit per worker, e.g. \code{"8GB"}.}
 
+\item{retry_memory_limit}{Memory limit for the sequential retry of batches
+that exceeded \code{memory_limit} during the parallel pass. Peak memory depends
+on how reference-dense a batch's works happen to be, which varies enough
+across the corpus that no single per-worker limit suits every batch;
+rather than sizing \code{memory_limit} for the worst batch and throttling all
+of them, dense batches are re-run alone with the whole machine.}
+
 \item{temp_dir}{Directory for Stage-1 shards and DuckDB spill. Defaults to a
 sibling of the index. Peak transient usage is roughly the size of the
 finished index.}
@@ -41,7 +49,16 @@ over 700,000 partitions.}
 \item{batch_bytes}{Approximate bytes of source parquet per Stage-1 batch.
 Batching is by byte budget over the flat file list rather than by hive
 partition, because the corpus is extremely skewed -- one \verb{updated_date=}
-partition can hold half the works while hundreds hold megabytes.}
+partition can hold half the works while hundreds hold megabytes.
+
+The default of 1 GB is measured, not guessed. Unnesting a batch and
+writing it across hundreds of partitions costs far more memory than the
+few MB it emits, so the batch size governs spill. On the dense files of
+the real corpus, at \code{memory_limit = "3GB"}: a 1 GB batch takes ~2.4 s with
+\strong{no spill}; a 2 GB batch takes ~15 s; a 4 GB batch runs \strong{out of
+memory}. An earlier 8 GB default spilled 23-31 GB per batch and was
+roughly six times slower overall. Raise this only alongside
+\code{memory_limit}, and measure.}
 
 \item{compression}{Parquet compression codec.}
 
@@ -70,13 +87,14 @@ pair.
 
 Each part file holds:
 \describe{
-\item{cited_id}{Numeric part of the cited work's ID, as \code{UBIGINT}}
-\item{citing_id}{Numeric part of the citing work's ID, as \code{UBIGINT}}
+\item{cited_id}{The cited work's OpenAlex ID, long form \code{VARCHAR}}
+\item{citing_id}{The citing work's OpenAlex ID, long form \code{VARCHAR}}
 }
-sorted by \verb{(cited_id, citing_id)}. IDs are stored numerically rather than as
-URLs: at three billion rows the \verb{https://openalex.org/W} prefix would
-dominate the index. Measured on the real corpus this costs about 5 bytes per
-edge.
+sorted by \verb{(cited_id, citing_id)}, matching the long-form convention of
+\verb{<dataset>_id_idx.parquet} and \verb{<dataset>_doi_idx.parquet} so every index in
+the family stores IDs the same way. Note this costs real space at three
+billion rows: \code{citing_id} is effectively random within a block and so does
+not dictionary-compress, unlike the sorted \code{cited_id}.
 }
 \section{Layout}{
 

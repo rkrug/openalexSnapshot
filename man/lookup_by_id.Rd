@@ -56,7 +56,14 @@ files when using \code{index_file} mode. If \code{NULL} (default), results are
 returned as a data frame. Ignored when \code{root_dir} is used (use
 \code{project_dir} instead).}
 
-\item{backend}{Which implementation to use. \code{"auto"} (the default) uses the
+\item{backend}{Retained only so that existing calls passing
+\code{backend = "rust"} get an explanatory error. The compiled backend was
+removed in 0.1.0; the package is pure R. \code{"auto"} (the default) and
+\code{"r"} both use the pure-R/DuckDB implementation. \code{"rust"} uses the
+compiled library and is \strong{deprecated}: it writes an unsorted index and
+supports neither \code{columns} nor \code{add_columns}. It will be removed in a
+future release. \code{snapshot_to_parquet()} is unaffected and remains
+Rust-only. \code{"auto"} (the default) uses the
 compiled Rust library when it is loaded and the pure-R/DuckDB
 implementation otherwise. \code{"r"} forces pure R and is always available.
 \code{"rust"} forces the compiled path and errors if it is not loaded.}

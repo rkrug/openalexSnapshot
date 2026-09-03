@@ -62,6 +62,11 @@
             } else " sequentially...")
   }
 
+  # One DuckDB thread per worker when running in parallel -- the processes
+  # already saturate the machine. Running sequentially, let DuckDB use all
+  # cores rather than idling them.
+  wthreads <- if (!is.null(workers) && workers > 1L) 1L else NULL
+
   if (!is.null(workers) && workers > 1L) {
     old_plan <- future::plan(future::multisession, workers = workers)
     on.exit(future::plan(old_plan), add = TRUE)
@@ -78,7 +83,11 @@
           p()
           return(invisible(NULL))
         }
-        wcon <- .oas_con(memory_limit = memory_limit, threads = 1L)
+        # Private spill directory per worker: concurrent DuckDB instances
+        # sharing one temp_directory corrupt each other's spill files.
+        wcon <- .oas_con(memory_limit = memory_limit,
+                         temp_dir = file.path(temp_dir, "duckdb", sprintf("idx_%05d", i)),
+                         threads = wthreads)
         on.exit(DBI::dbDisconnect(wcon, shutdown = TRUE), add = TRUE)
 
         q <- paste0(
@@ -105,15 +114,28 @@
   if (isTRUE(verbose)) message("    Stage 1 complete.")
   if (isTRUE(verbose)) message("Stage 2: combining into ", index_file)
 
+  # Sorted by (id_block, id), with preserve_insertion_order = TRUE so the
+  # ORDER BY survives into the file.
+  #
+  # This is what makes lookup_by_id() a lookup rather than a scan. Unsorted,
+  # every call reads the whole index -- measured at 1.87 s per call on the real
+  # 7.29 GB works index, and a snowball makes four such calls. Sorting gives
+  # the row groups non-overlapping id_block ranges, so the min/max statistics
+  # in the footer let a query skip almost all of them.
+  #
+  # id_block leads the sort deliberately: it is an INTEGER, and a set predicate
+  # on it prunes reliably from statistics, whereas pruning on the id string is
+  # far less dependable across engines. This is the use the column was always
+  # documented for and never actually put to.
   con <- .oas_con(memory_limit = memory_limit, temp_dir = temp_dir,
-                  threads = workers, preserve_order = FALSE)
+                  threads = workers, preserve_order = TRUE)
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
   DBI::dbExecute(con, paste0(
     "COPY (SELECT * FROM read_parquet(",
     .oas_sql_str(paste0(.oas_fwd(temp_dir), "/idx_*.parquet")),
-    ")) TO ", .oas_sql_str(.oas_fwd(index_file)),
-    " (FORMAT PARQUET, COMPRESSION ZSTD)"
+    ") ORDER BY id_block, id) TO ", .oas_sql_str(.oas_fwd(index_file)),
+    " (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 200000)"
   ))
 
   unlink(temp_dir, recursive = TRUE)

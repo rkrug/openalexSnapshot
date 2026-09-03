@@ -21,11 +21,9 @@ knitr::opts_chunk$set(
 [![Codecov test coverage](https://codecov.io/gh/rkrug/openalexSnapshot/graph/badge.svg)](https://app.codecov.io/gh/rkrug/openalexSnapshot)
 <!-- badges: end -->
 
-`openalexSnapshot` converts the [OpenAlex bulk snapshot](https://docs.openalex.org/download-all-data/openalex-snapshot) from gzipped newline-delimited JSON to Parquet, builds fast ID-lookup indexes, and extracts individual records by OpenAlex ID. The heavy lifting is done by a compiled Rust library (statically linked via [extendr](https://extendr.github.io/)), with no external binary dependency. For API-based access to OpenAlex, see [openalexPro](https://rkrug.github.io/openalexPro).
 
 ## Installation
 
-Install from r-universe (precompiled binaries available for macOS and Linux — no Rust toolchain required):
 
 ```{r}
 install.packages(

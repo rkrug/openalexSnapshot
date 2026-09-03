@@ -100,11 +100,11 @@ get_citing <- function(keypaper,
   con <- .oas_con(memory_limit = memory_limit)
   on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
+  # The index stores long-form IDs, so they come straight out.
   edges <- DBI::dbGetQuery(con, paste0(
-    "SELECT 'https://openalex.org/W' || citing_id::VARCHAR AS \"from\", ",
-    "       'https://openalex.org/W' || cited_id::VARCHAR  AS \"to\" ",
+    "SELECT citing_id AS \"from\", cited_id AS \"to\" ",
     "FROM read_parquet(", .oas_sql_paths(parts), ", hive_partitioning = false) ",
-    "WHERE cited_id IN (", paste(format(num, scientific = FALSE), collapse = ", "), ") ",
+    "WHERE cited_id IN (", paste(.oas_sql_str(kp), collapse = ", "), ") ",
     "ORDER BY \"to\", \"from\""
   ))
 

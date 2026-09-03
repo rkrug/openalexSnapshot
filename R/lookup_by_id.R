@@ -28,7 +28,14 @@
 #'   `project_dir` are ignored.
 #' @param selected Column selection passed to `arrow::open_dataset()`. Default
 #'   is `NULL` (all columns).
-#' @param backend Which implementation to use. `"auto"` (the default) uses the
+#' @param backend Retained only so that existing calls passing
+#'   `backend = "rust"` get an explanatory error. The compiled backend was
+#'   removed in 0.1.0; the package is pure R. `"auto"` (the default) and
+#'   `"r"` both use the pure-R/DuckDB implementation. `"rust"` uses the
+#'   compiled library and is **deprecated**: it writes an unsorted index and
+#'   supports neither `columns` nor `add_columns`. It will be removed in a
+#'   future release. `snapshot_to_parquet()` is unaffected and remains
+#'   Rust-only. `"auto"` (the default) uses the
 #'   compiled Rust library when it is loaded and the pure-R/DuckDB
 #'   implementation otherwise. `"r"` forces pure R and is always available.
 #'   `"rust"` forces the compiled path and errors if it is not loaded.
@@ -104,52 +111,24 @@ lookup_by_id <- function(
   }
 
   backend <- .oas_backend(backend)
-  if (backend == "rust" && (!is.null(columns) || !is.null(add_columns))) {
-    stop("`columns` and `add_columns` require backend = \"r\"; the compiled ",
-         "path always reads every column.", call. = FALSE)
-  }
-
-  workers_int <- as.integer(if (is.null(workers)) 1L else workers)
 
   lookup_one <- function(idx, out) {
-    if (backend == "r") {
-      return(.oas_lookup_one_index(
-        index_file = idx, ids = as.character(ids),
-        columns = columns, add_columns = add_columns,
-        selected = selected, workers = workers, output = out,
-        verbose = isTRUE(verbose)
-      ))
-    }
-    oa_lookup_by_id(
-      index_file = idx, ids = as.character(ids), output = out,
-      workers = workers_int, verbose = isTRUE(verbose)
+    .oas_lookup_one_index(
+      index_file = idx, ids = as.character(ids),
+      columns = columns, add_columns = add_columns,
+      selected = selected, workers = workers, output = out,
+      verbose = isTRUE(verbose)
     )
   }
 
   # index_file mode ------------------------------------------------------------
   if (!is.null(index_file)) {
-    if (is.null(output)) {
-      if (backend == "r") return(lookup_one(index_file, NULL))
-      # Rust path cannot return a data frame: write to a temp dir and read back.
-      tmp_out <- tempfile(pattern = "oa_lookup_")
-      on.exit(unlink(tmp_out, recursive = TRUE, force = TRUE), add = TRUE)
-      lookup_one(index_file, tmp_out)
-      pq_files <- list.files(tmp_out, pattern = "\\.parquet$",
-                             full.names = TRUE, recursive = TRUE)
-      if (length(pq_files) == 0L) {
-        message("No matching records found.")
-        return(data.frame())
-      }
-      result <- arrow::open_dataset(tmp_out) |> dplyr::collect()
-      if ("file_row_number" %in% names(result)) {
-        result$file_row_number <- NULL
-      }
-      message("Retrieved ", nrow(result), " records")
-      return(result)
-    } else {
-      lookup_one(index_file, output)
-      return(invisible(output))
-    }
+    # The R implementation returns a data frame directly. The compiled backend
+    # could only write to disk, so this used to detour through a temp
+    # directory and read the parquet back; that is gone with it.
+    if (is.null(output)) return(lookup_one(index_file, NULL))
+    lookup_one(index_file, output)
+    return(invisible(output))
   }
 
   # root_dir mode --------------------------------------------------------------

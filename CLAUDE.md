@@ -18,89 +18,33 @@ an informative error pointing users here.
 
 ## Architecture
 
-### Design decision: pure R by default, Rust as an optional accelerator
+### Design decision: pure R
 
-`openalexSnapshot` is moving to a **pure-R/DuckDB** implementation, with the compiled Rust
-back-end retained as an optional accelerator. This reverses the earlier "Rust-only, no pure-R
-fallback" position; see Part 4 of `../compatibility_report.md` for the measurement that drove
-the change.
+`openalexSnapshot` is **pure R** over DuckDB and arrow. There is no compiled
+code, and no Rust toolchain is needed to install it.
 
-**Rationale (measured, not assumed).** For `index` and `extract` the work is parquet decode
-and write, not computation — a single DuckDB thread already saturates the pipeline, so Rust's
-expected advantage is ~1.0-1.5x and the real corpus lives on an external volume where cold I/O
-dominates and is language-neutral. `enrich` was the one place Rust genuinely paid off (~10x),
-and moving enrichment from download-time to extract-time removes that step in batch form
-entirely. Dropping the Rust *requirement* also removes the toolchain dependency, restores a
-realistic CRAN path, and eliminates the `openalex-core` git-tag pinning problem.
+It was previously a thin R layer over a compiled `openalex-core` crate. That
+was removed once measurement showed it bought nothing on this workload: Part 4
+of `../compatibility_report.md` found `index` and `extract` are parquet decode
+and write rather than computation -- a single DuckDB thread already saturates,
+so throughput was identical at 1 thread and at 8 -- putting the expected Rust
+advantage at ~1.0-1.5x, and less on an external volume where cold I/O dominates
+and is language-neutral.
 
-**Mechanism.** `build_corpus_index()` and `lookup_by_id()` take
-`backend = c("auto", "r", "rust")`:
+Two things then made R the *better* implementation rather than merely the
+adequate one:
 
-| value | behaviour |
-|---|---|
-| `"auto"` (default) | Rust when the compiled library is loaded, otherwise R |
-| `"r"` | pure R/DuckDB — always available, and what CI exercises |
-| `"rust"` | force the compiled path; errors if it is not loaded |
+* it writes a **sorted** index, which is what lets `lookup_by_id()` prune row
+  groups instead of scanning a multi-GB file (measured: 1.87 s per call against
+  an unsorted 7.29 GB works index);
+* it supports `columns` (projection) and `add_columns`, neither of which the
+  compiled path could do -- it always did `SELECT *`.
 
-| function | R backend | Rust backend |
-|---|---|---|
-| `build_corpus_index()` | yes | yes |
-| `lookup_by_id()` | yes | yes |
-| `snapshot_to_parquet()` | **no** | yes (only) |
-| `build_citation_index()`, `build_doi_index()`, `get_citing()`, `get_cited()`, `doi_to_id()`, `lookup_by_doi()` | **yes (only)** | no |
+`snapshot_to_parquet()` was removed outright: OpenAlex now publishes the
+snapshot natively in parquet, so JSON conversion is a dead path.
 
-`snapshot_to_parquet()` stays Rust-only deliberately: it is the hardest to port (JSON schema
-inference), it is not on the critical path for the offline citation graph, and the official
-OpenAlex snapshot is now published natively in parquet, so JSON conversion is a legacy path.
-
-The pure-R implementations that seeded this work are in openalexPro's git history:
-```
-git -C ~/GitHub/openalexPro show 70539a0:R/build_corpus_index.R
-git -C ~/GitHub/openalexPro show 70539a0:R/lookup_by_id.R
-git -C ~/GitHub/openalexPro show 70539a0:R/snapshot_to_parquet.R
-```
-
-### Rust back-end (openalex-core)
-
-`~/GitHub/openalex-snapshot/openalex-core/` is already a **library crate** in the workspace,
-explicitly designed to be called from R. Its `conversion` feature exposes exactly the three
-functions this package needs:
-
-```
-openalex-core/src/conversion.rs
-  pub fn snapshot_to_parquet(...)   line 258
-  pub fn build_corpus_index(...)    line 786
-  pub fn lookup_by_id(...)          line 991
-  pub fn infer_api_list_type(...)   line 610  (used by openalexPro's pro_request_parquet)
-```
-
-`openalex-core/src/lib.rs` also re-exports `works_abstract_expr()` and `works_citation_expr()`
-(the SQL helpers now duplicated in `openalexPro/R/sql_helpers.R`).
-
-**Steps to wire up the extendr bridge:**
-
-1. `rextendr::use_extendr()` — adds `src/rust/` scaffolding to this R package.
-2. Write `src/rust/src/lib.rs`: a thin crate that depends on `openalex-core` with
-   `features = ["conversion"]` and wraps the pub functions with `#[extendr]`.
-3. In `src/rust/Cargo.toml`, point to openalex-core via a path or git dependency:
-   ```toml
-   [dependencies]
-   openalex-core = { path = "../../../../openalex-snapshot/openalex-core", features = ["conversion"] }
-   extendr-api = "*"
-   ```
-4. The `configure` / `configure.win` scripts from the old openalexPro extendr bridge are
-   recoverable from git history:
-   ```
-   git -C ~/GitHub/openalexPro show c86725f:configure
-   git -C ~/GitHub/openalexPro show c86725f:configure.win
-   ```
-5. Set up GitHub Actions cross-compilation and r-universe publishing.
-
-**Important:** `openalex-core` lives in a Cargo workspace. When building as a dependency from
-this R package's `src/rust/` crate, the workspace root must be discoverable or the dependency
-must be referenced via a published crate on crates.io / git URL (not a relative path that
-crosses the workspace boundary). The cleanest solution is to publish `openalex-core` to
-crates.io, or reference it via a git URL with `tag = "vX.Y.Z"`.
+`backend` survives only as an argument that raises an explanatory error on
+`"rust"`, so existing calls fail with a reason rather than "unused argument".
 
 ## Common Commands
 
@@ -128,6 +72,13 @@ devtools::check()         # Full R CMD CHECK
   - `<dataset>_cite_idx/` — a hive **directory** partitioned by `cited_block`. It is a
     directory because a 3-billion-row single file cannot be built without a global sort and
     its footer alone would cost tens of MB to parse on every query
+- Indexes are written **sorted**, and this is load-bearing rather than tidy:
+  `<dataset>_id_idx.parquet` by `(id_block, id)`, `<dataset>_doi_idx.parquet`
+  by `doi`, each `cite_idx` partition by `(cited_id, citing_id)`. Sorting is
+  what lets a lookup prune row groups from footer statistics instead of
+  scanning the file -- unsorted, the 7.29 GB works index cost 1.87 s per call.
+  Every such write needs `preserve_insertion_order = TRUE`, or the parallel
+  writer may reorder row groups and the ordering is silently lost.
 - `cited_block = floor(numeric_id / 1e7)` (i.e. `id_block(x) %/% 1000L`) — ~351 partitions.
   Plain `id_block()`'s `floor(n/1e4)` would give 714k partitions and is unusable as a
   partition key. `block_size` is recorded in `_index_meta.parquet` and must be **read from
