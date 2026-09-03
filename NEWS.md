@@ -1,4 +1,4 @@
-# openalexSnapshot 0.1.0
+# openalexSnapshot 0.2.0
 
 ## New: offline citation graph
 

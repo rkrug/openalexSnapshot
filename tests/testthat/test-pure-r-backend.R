@@ -289,3 +289,47 @@ test_that("block_size adapts to the id range of the dataset", {
   expect_gt(bw, bn * 10)          # wide range -> much wider blocks
   expect_gte(bn, 1e4)             # floored
 })
+
+test_that(".oas_plan_batches() groups by byte budget, never by file count", {
+  # The corpus is extremely skewed -- one updated_date partition holds 54% of
+  # the works while hundreds hold megabytes -- so batching by directory or by
+  # count produces wildly uneven work. Batch size is also what governs spill:
+  # 8 GB batches spilled 23-31 GB each; 1 GB batches spill nothing.
+  tmp <- withr::local_tempdir()
+  mk <- function(name, kb) {
+    p <- file.path(tmp, name)
+    writeBin(raw(kb * 1024), p)
+    p
+  }
+  files <- c(mk("a", 400), mk("b", 400), mk("c", 400), mk("d", 50), mk("e", 50))
+
+  b <- .oas_plan_batches(files, batch_bytes = 1024 * 1024)   # 1 MB budget
+  expect_setequal(unlist(b), files)                          # nothing dropped
+  expect_equal(length(unlist(b)), length(files))             # nothing duplicated
+  expect_true(all(vapply(b, length, integer(1)) >= 1L))
+
+  # a file larger than the budget still gets its own batch rather than vanishing
+  big <- mk("big", 4096)
+  b2 <- .oas_plan_batches(c(files, big), batch_bytes = 1024 * 1024)
+  expect_true(big %in% unlist(b2))
+
+  # a generous budget collapses to one batch; a tiny one splits per file
+  expect_length(.oas_plan_batches(files, batch_bytes = 1e12), 1L)
+  expect_length(.oas_plan_batches(files, batch_bytes = 1L), length(files))
+})
+
+test_that(".oas_stage1_sql() emits the partitioned write the resume logic needs", {
+  q <- .oas_stage1_sql(c("/c/a.parquet", "/c/b.parquet"),
+                       "json_extract_string(w.referenced_works, '$[*]')",
+                       1e7, "/tmp/shards", "b00007", "ZSTD")
+  # FILENAME_PATTERN carries the batch tag: without it a failed batch's partial
+  # output cannot be identified and cleared, and concurrent writers into one
+  # shard tree would collide.
+  expect_match(q, "FILENAME_PATTERN 'b00007_\\{i\\}'", fixed = FALSE)
+  expect_match(q, "PARTITION_BY \\(cited_block\\)")
+  expect_match(q, "OVERWRITE_OR_IGNORE")
+  # both source files present, and the id extraction is the works-specific one
+  expect_match(q, "/c/a.parquet", fixed = TRUE)
+  expect_match(q, "/c/b.parquet", fixed = TRUE)
+  expect_match(q, "position\\('/W' IN r.ref\\)")
+})
