@@ -31,7 +31,7 @@
                                  memory_limit = NULL,
                                  temp_dir = NULL,
                                  batch_bytes = 1e9,
-                                 block_size = 1e7,
+                                 block_size = NULL,
                                  overwrite = FALSE,
                                  verbose = TRUE) {
   if (!dir.exists(corpus_dir)) {
@@ -42,7 +42,6 @@
   parent_dir  <- dirname(corpus_dir)
   corpus_name <- basename(corpus_dir)
   index_dir   <- file.path(parent_dir, paste0(corpus_name, "_id_idx"))
-  block_size  <- as.integer(block_size)
 
   complete <- file.exists(file.path(index_dir, "_index_meta.parquet"))
   if (dir.exists(index_dir) && complete && !isTRUE(overwrite)) {
@@ -54,6 +53,14 @@
   if (isTRUE(overwrite)) unlink(index_dir, recursive = TRUE)
 
   files <- .oas_corpus_files(corpus_dir)
+  if (is.null(block_size)) {
+    block_size <- .oas_derive_block_size(files)
+    if (isTRUE(verbose)) {
+      message("    derived block_size = ", format(block_size, scientific = FALSE),
+              " from the id range")
+    }
+  }
+  block_size <- as.numeric(block_size)
   if (is.null(temp_dir)) {
     temp_dir <- file.path(tempdir(), paste0(corpus_name, "_id_idx_tmp"))
   }
@@ -113,8 +120,10 @@
           "  replace(replace(w.filename, ", .oas_sql_str(root_prefix), ", ''),",
           "          '\\', '/') AS parquet_file, ",
           "  w.file_row_number AS file_row_number, ",
-          "  CAST(TRY_CAST(substr(w.id, position('/W' IN w.id) + 2) AS UBIGINT)",
-          "       // ", block_size, " AS INTEGER) AS id_block ",
+          # Trailing digits, not position('/W'): that is works-only and yields
+          # NULL for every author, source, institution and so on.
+          "  CAST(TRY_CAST(regexp_extract(w.id, '([0-9]+)$', 1) AS UBIGINT)",
+          "       // ", format(block_size, scientific = FALSE), " AS INTEGER) AS id_block ",
           "FROM read_parquet(", .oas_sql_paths(batches[[i]]),
           ", filename = true, file_row_number = true, hive_partitioning = false) AS w",
           ") TO ", .oas_sql_str(.oas_fwd(shards_dir)),

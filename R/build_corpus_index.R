@@ -32,8 +32,14 @@
 #'   or if the default lacks room: peak usage is roughly the size of the
 #'   finished index plus its transient shards.
 #' @param batch_bytes Approximate bytes of source parquet per Stage-1 batch.
-#' @param block_size Width of an `id_block`. Default `1e7` gives ~351
-#'   non-empty blocks over the full works corpus.
+#' @param block_size Width of an `id_block`. `NULL` (default) derives one from
+#'   the actual id range so the index lands near 300 blocks.
+#'
+#'   A fixed width does not suit every dataset, because entity id ranges differ
+#'   by orders of magnitude. At `1e7`, works gives 351 useful blocks but
+#'   authors gives only **14** -- their ids cluster tightly around 5.0-5.1e9,
+#'   so 113 million rows would land in 14 partitions of ~8 M rows and prune
+#'   almost nothing. Pass a value explicitly to override.
 #' @param overwrite If `TRUE`, rebuilds existing indexes. Default is `FALSE`
 #'   (skip if the index already exists).
 #' @param verbose Print progress messages. Default is `TRUE`.
@@ -77,6 +83,11 @@
 #'
 #' `_index_meta.parquet` is written last; its presence marks the index
 #' complete, and it records the `block_size` the query side must recompute.
+#'
+#' @seealso [lookup_by_id()] for ID-based record retrieval,
+#'   [build_citation_index()] and [build_doi_index()].
+#'
+#' @export
 build_corpus_index <- function(
   root_dir     = NULL,
   data_sets    = NULL,
@@ -84,7 +95,7 @@ build_corpus_index <- function(
   memory_limit = NULL,
   temp_dir     = NULL,
   batch_bytes  = 1e9,
-  block_size   = 1e7,
+  block_size   = NULL,
   overwrite    = FALSE,
   verbose      = TRUE,
   corpus_dir   = NULL,

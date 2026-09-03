@@ -182,8 +182,14 @@ test_that("the id index spans several blocks and records block_size", {
   expect_gt(length(blocks), 1L)   # fixture ids are spread deliberately
   meta <- .oas_read_index_meta(idx)
   expect_equal(meta$index_type, "id")
-  expect_equal(as.numeric(meta$block_size), 1e7)
+  expect_gte(as.numeric(meta$block_size), 1e4)      # derived, floored at 1e4
   expect_equal(as.numeric(meta$n_rows), 12)
+  # the recorded width must be the one the blocks were actually cut with
+  nums <- .oas_id_numeric(paste0("W", sub(".*/W", "", tiny_ids())))
+  expect_setequal(
+    sort(unique(floor(nums / as.numeric(meta$block_size)))),
+    sort(as.numeric(sub("id_block=", "", blocks)))
+  )
 })
 
 test_that("lookup_by_id() filters on id_block as well as id", {
@@ -213,4 +219,73 @@ test_that("backend resolves to r, and the removed rust backend errors clearly", 
 test_that("the package ships no compiled code", {
   expect_false(dir.exists(system.file("libs", package = "openalexSnapshot")) &&
                  length(list.files(system.file("libs", package = "openalexSnapshot"))) > 0)
+})
+
+
+test_that("every public function is actually exported in NAMESPACE", {
+  # devtools::load_all() exposes unexported objects, so the rest of the suite
+  # cannot catch a lost @export tag -- and one was lost this way, leaving
+  # build_corpus_index() invisible to library() while all tests still passed.
+  # Read NAMESPACE directly rather than asking the loaded namespace.
+  ns <- readLines(testthat::test_path("..", "..", "NAMESPACE"), warn = FALSE)
+  exported <- sub("^export\\((.*)\\)$", "\\1", grep("^export\\(", ns, value = TRUE))
+  expect_setequal(
+    exported,
+    c("build_citation_index", "build_corpus_index", "build_doi_index",
+      "doi_to_id", "get_cited", "get_citing", "lookup_by_doi", "lookup_by_id")
+  )
+})
+
+test_that("id extraction is generic, not works-only", {
+  # Regression: a Stage-1 optimisation used position('/W' IN id), which returns
+  # 0 for any non-works id, so every author/source/institution row landed in a
+  # NULL block. Author ids in particular are the second-largest dataset.
+  tmp <- withr::local_tempdir()
+  d <- file.path(tmp, "parquet", "authors", "updated_date=2020-01-01")
+  dir.create(d, recursive = TRUE)
+  ids <- paste0("https://openalex.org/A",
+                format(5000000000 + (0:9) * 200000, scientific = FALSE, trim = TRUE))
+  arrow::write_parquet(data.frame(id = ids, display_name = paste("Author", 1:10)),
+                       file.path(d, "part_0000.parquet"))
+
+  idx <- build_corpus_index(corpus_dir = file.path(tmp, "parquet", "authors"),
+                            backend = "r", verbose = FALSE)
+  got <- dplyr::collect(arrow::open_dataset(
+    list.files(idx, pattern = "part-0\\.parquet$", recursive = TRUE,
+               full.names = TRUE)))
+  expect_equal(nrow(got), 10L)
+  expect_setequal(got$id, ids)
+
+  # and they are spread over blocks rather than collapsing into one
+  blocks <- grep("^id_block=", list.dirs(idx, recursive = FALSE,
+                                         full.names = FALSE), value = TRUE)
+  expect_gt(length(blocks), 1L)
+  expect_false(any(grepl("id_block=__HIVE_DEFAULT", blocks)))
+
+  # a lookup round-trips (id taken from the fixture, not hard-coded)
+  want <- ids[3]
+  back <- lookup_by_id(ids = sub(".*/", "", want), index_file = idx,
+                       backend = "r", columns = "id", verbose = FALSE)
+  expect_equal(back$id, want)
+})
+
+test_that("block_size adapts to the id range of the dataset", {
+  # A fixed 1e7 gives works 351 blocks but authors only 14, because author ids
+  # cluster in a narrow range. Deriving from the observed span fixes that.
+  tmp <- withr::local_tempdir()
+  wide <- file.path(tmp, "w"); dir.create(wide, recursive = TRUE)
+  arrow::write_parquet(
+    data.frame(id = paste0("https://openalex.org/W",
+                           format(c(1e3, 7.1e9), scientific = FALSE, trim = TRUE))),
+    file.path(wide, "part_0000.parquet"))
+  narrow <- file.path(tmp, "n"); dir.create(narrow, recursive = TRUE)
+  arrow::write_parquet(
+    data.frame(id = paste0("https://openalex.org/A",
+                           format(c(5.00e9, 5.13e9), scientific = FALSE, trim = TRUE))),
+    file.path(narrow, "part_0000.parquet"))
+
+  bw <- .oas_derive_block_size(list.files(wide, full.names = TRUE))
+  bn <- .oas_derive_block_size(list.files(narrow, full.names = TRUE))
+  expect_gt(bw, bn * 10)          # wide range -> much wider blocks
+  expect_gte(bn, 1e4)             # floored
 })

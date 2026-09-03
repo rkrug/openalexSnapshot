@@ -212,6 +212,38 @@
   batches
 }
 
+# -- block sizing -----------------------------------------------------------
+
+#' Derive a block width from the actual id range of a corpus
+#'
+#' A fixed width cannot serve every entity, because id ranges differ by orders
+#' of magnitude. Works ids span nearly the whole 0-7.1e9 range, so a width of
+#' 1e7 yields 351 useful blocks. Author ids cluster in 5.0-5.1e9, where the
+#' same width yields **14** blocks for 113 million rows -- partitions of ~8M
+#' rows that prune almost nothing.
+#'
+#' Sampling the extremes and dividing by a target block count adapts to both.
+#' The result is approximate: ids are not uniformly distributed within their
+#' range, so the realised block count differs from the target, and empty blocks
+#' are simply never created.
+#'
+#' @param files Corpus parquet files.
+#' @param target Desired number of blocks.
+#' @return A numeric block width, at least 1e4.
+#' @noRd
+.oas_derive_block_size <- function(files, target = 300L) {
+  probe <- unique(c(utils::head(files, 3L), utils::tail(files, 3L)))
+  con <- .oas_con()
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  r <- DBI::dbGetQuery(con, paste0(
+    "SELECT min(n) AS lo, max(n) AS hi FROM (SELECT TRY_CAST(",
+    "regexp_extract(id, '([0-9]+)$', 1) AS UBIGINT) AS n FROM read_parquet(",
+    .oas_sql_paths(probe), ", hive_partitioning = false)) WHERE n IS NOT NULL"))
+  span <- as.numeric(r$hi[[1L]]) - as.numeric(r$lo[[1L]])
+  if (!is.finite(span) || span <= 0) return(1e7)
+  max(1e4, signif(span / target, 2))
+}
+
 # -- disk space -------------------------------------------------------------
 
 #' Free bytes on the filesystem holding `path`

@@ -11,7 +11,7 @@ build_corpus_index(
   memory_limit = NULL,
   temp_dir = NULL,
   batch_bytes = 1e+09,
-  block_size = 1e+07,
+  block_size = NULL,
   overwrite = FALSE,
   verbose = TRUE,
   corpus_dir = NULL,
@@ -44,8 +44,14 @@ finished index plus its transient shards.}
 
 \item{batch_bytes}{Approximate bytes of source parquet per Stage-1 batch.}
 
-\item{block_size}{Width of an \code{id_block}. Default \code{1e7} gives ~351
-non-empty blocks over the full works corpus.}
+\item{block_size}{Width of an \code{id_block}. \code{NULL} (default) derives one from
+the actual id range so the index lands near 300 blocks.
+
+A fixed width does not suit every dataset, because entity id ranges differ
+by orders of magnitude. At \code{1e7}, works gives 351 useful blocks but
+authors gives only \strong{14} -- their ids cluster tightly around 5.0-5.1e9,
+so 113 million rows would land in 14 partitions of ~8 M rows and prune
+almost nothing. Pass a value explicitly to override.}
 
 \item{overwrite}{If \code{TRUE}, rebuilds existing indexes. Default is \code{FALSE}
 (skip if the index already exists).}
@@ -110,4 +116,8 @@ lookup opens only the blocks its ids fall in.
 
 \verb{_index_meta.parquet} is written last; its presence marks the index
 complete, and it records the \code{block_size} the query side must recompute.
+}
+\seealso{
+\code{\link[=lookup_by_id]{lookup_by_id()}} for ID-based record retrieval,
+\code{\link[=build_citation_index]{build_citation_index()}} and \code{\link[=build_doi_index]{build_doi_index()}}.
 }
